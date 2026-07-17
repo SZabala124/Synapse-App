@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LaTeX Web Editor (Estilo Overleaf)</title>
+    
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            },
+            chtml: {
+                scale: 0.95,
+                matchFontHeight: false
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+
+    <style>
+        /* Variables de color estilo Overleaf */
+        :root {
+            --dark-bg: #1e1e1e;
+            --sidebar-bg: #2d3134;
+            --topbar-bg: #181a1b;
+            --accent-green: #248f24;
+            --accent-green-hover: #1e751e;
+            --text-color: #e0e0e0;
+            --input-dark-bg: #3e4346;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+        }
+
+        /* Barra superior */
+        header {
+            background-color: var(--topbar-bg);
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .logo {
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .logo span {
+            color: var(--accent-green);
+        }
+
+        .btn-compile {
+            background-color: var(--accent-green);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .btn-compile:hover {
+            background-color: var(--accent-green-hover);
+        }
+
+        /* Contenedor Principal */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Panel Lateral Izquierdo (Configuración y Metadatos) */
+        .sidebar {
+            width: 240px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid #333;
+            padding: 20px 15px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        .sidebar h4 {
+            margin: 0;
+            color: #aaa;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+        }
+
+        /* Campos de control en la barra lateral */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-size: 0.8rem;
+            color: #bbb;
+        }
+
+        .sidebar-input {
+            background-color: var(--input-dark-bg);
+            border: 1px solid #4f5558;
+            color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .sidebar-input:focus {
+            border-color: var(--accent-green);
+        }
+
+        /* Zona del Editor (Centro) */
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1e1e1e;
+            border-right: 1px solid #333;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100%;
+            background: #1e1e1e;
+            color: #f8f8f2;
+            border: none;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1rem;
+            resize: none;
+            outline: none;
+            box-sizing: border-box;
+            line-height: 1.5;
+        }
+
+        /* Zona de Vista Previa (Derecha) */
+        .preview-container {
+            flex: 1;
+            background: #525659;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Hoja simulada estilo LaTeX A4 */
+        .pdf-page {
+            background: white;
+            color: black;
+            width: 100%;
+            max-width: 595px;
+            min-height: 842px;
+            padding: 50px 60px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            box-sizing: border-box;
+            font-family: "Times New Roman", Times, serif;
+            line-height: 1.6;
+            font-size: 11pt;
+        }
+
+        #preview {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+        }
+
+        /* Encabezado Institucional Fijo */
+        .persistent-header {
+            text-align: left;
+            margin-bottom: 25px;
+            line-height: 1.4;
+        }
+
+        .persistent-header .app-name {
+            font-size: 14pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            color: #111;
+        }
+
+        .persistent-header .univ-name {
+            font-size: 12pt;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .persistent-header .divider {
+            border: 0;
+            border-top: 2px solid #000;
+            margin-top: 10px;
+            margin-bottom: 30px;
+        }
+
+        /* Renderizado estático de metadatos en la hoja (Formato LaTeX clásico) */
+        .latex-metadata-display {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .latex-display-title {
+            font-size: 1.7rem;
+            font-weight: bold;
+            margin-bottom: 6px;
+            color: #000;
+        }
+
+        .latex-display-author {
+            font-size: 1.1rem;
+            display: inline;
+            margin-bottom: 0;
+            color: #222;
+        }
+
+        .latex-display-date {
+            font-size: 1.1rem;
+            display: inline;
+            color: #333;
+        }
+
+        .latex-display-author:not(:empty)::after {
+            content: " · ";
+            color: #666;
+        }
+
+        /* Estilos de comandos internos de LaTeX */
+        .latex-section { font-size: 1.28rem; font-weight: bold; margin: 1.25em 0 0.55em; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
+        .latex-subsection { font-size: 1.1rem; font-weight: bold; margin: 1em 0 0.4em; }
+        .latex-subsubsection { font-size: 1rem; font-weight: bold; margin-top: 12px; }
+        .latex-paragraph-title { font-weight: bold; display: inline; }
+        .latex-center { text-align: center; margin: 1em 0; }
+        .latex-flushright { text-align: right; margin: 1em 0; }
+        .latex-flushleft { text-align: left; margin: 1em 0; }
+        .latex-quote {
+            margin: 1em 2.2em;
+            padding-left: 1em;
+            border-left: 2px solid #cfcfcf;
+            font-style: italic;
+        }
+        .latex-minipage-row {
+            display: flex;
+            align-items: center;
+            gap: 1.5em;
+            margin: 0.85em 0;
+        }
+        .latex-minipage {
+            min-width: 0;
+        }
+        .latex-rule {
+            border: 0;
+            border-top: 2px solid #111;
+            margin: 1.1em 0;
+        }
+        .latex-figure {
+            margin: 1em auto;
+            text-align: center;
+        }
+        .latex-figure img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto;
+        }
+        .latex-image-missing {
+            border: 1px solid #d6d6d6;
+            background: #fafafa;
+            color: #555;
+            padding: 1em;
+            font-size: 0.92em;
+        }
+        .latex-aspa {
+            display: inline-grid;
+            grid-template-columns: repeat(5, auto);
+            align-items: center;
+            justify-content: center;
+            gap: 0.2em 1.15em;
+            margin: 0.55em auto 0.85em;
+            padding: 0.55em 1em;
+            border: 1px solid #e1e1e1;
+            background: #fbfbfb;
+            font-size: 1.02em;
+        }
+        .latex-aspa-wrap {
+            text-align: center;
+        }
+        .latex-aspa .arrow {
+            color: #444;
+            font-size: 1.2em;
+            line-height: 1;
+        }
+        .latex-tikz-diagram {
+            border: 1px solid #d6d6d6;
+            background: #fafafa;
+            color: #555;
+            padding: 0.75em;
+            margin: 1em 0;
+            overflow-x: auto;
+        }
+        .latex-tikz-diagram svg {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto;
+        }
+        .latex-adjustbox {
+            max-width: 100%;
+            overflow-x: auto;
+            margin: 0.75em 0;
+        }
+        .latex-math-scroll {
+            display: block;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 2px;
+        }
+        .latex-small {
+            font-size: 0.82em;
+        }
+        .latex-table {
+            border-collapse: collapse;
+            margin: 1em auto;
+            max-width: 100%;
+            width: auto;
+            font-size: 0.86em;
+            table-layout: auto;
+        }
+        .latex-table td,
+        .latex-table th {
+            border: 1px solid #222;
+            padding: 4px 6px;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+        }
+        .latex-table .no-border {
+            border-left-color: transparent;
+            border-right-color: transparent;
+        }
+        .latex-error {
+            display: inline-block;
+            color: #7a2b12;
+            background: #fff4c4;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 0.92em;
+        }
+        #preview p {
+            margin: 0.72em 0;
+            text-align: left;
+        }
+        #preview ul,
+        #preview ol {
+            margin: 0.75em 0 0.75em 1.5em;
+            padding-left: 1.2em;
+        }
+        #preview li {
+            margin: 0.25em 0;
+        }
+        #preview mjx-container[display="true"] {
+            max-width: 100%;
+            overflow-x: visible;
+            overflow-y: hidden;
+            padding-bottom: 2px;
+        }
+        #preview mjx-container {
+            max-width: 100%;
+        }
+
+        /* Configuración para Imprimir / Guardar en PDF */
+        @media print {
+            body * { visibility: hidden; }
+            .preview-container, .pdf-page, .pdf-page * { visibility: visible; }
+            .preview-container { position: absolute; left: 0; top: 0; width: 100%; padding: 0; background: white; }
+            .pdf-page { box-shadow: none; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">Web<span>Overleaf</span></div>
+        <div>
+            <button class="btn-compile" onclick="compileLaTeX()">► Recompilar</button>
+            <button class="btn-compile" style="background-color: #444;" onclick="window.print()">Imprimir / PDF</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        
+        <div class="sidebar">
+            <h4>Metadatos del Documento</h4>
+            
+            <div class="form-group">
+                <label for="sidebar-title">Título Principal:</label>
+                <input type="text" id="sidebar-title" class="sidebar-input" value="Reporte de Laboratorio Semanal" oninput="updateMetadata()">
+            </div>
+
+            <div class="form-group">
+                <label for="sidebar-author">Nombre / Materia:</label>
+                <input type="text" id="sidebar-author" class="sidebar-input" value="Estudiante de Ingeniería" oninput="updateMetadata()">
+            </div>
+
+            <div class="form-group">
+                <label for="sidebar-date">Fecha:</label>
+                <input type="text" id="sidebar-date" class="sidebar-input" value="30/5/2026" oninput="updateMetadata()">
+            </div>
+        </div>
+
+        <div class="editor-container">
+            <textarea id="editor" spellcheck="false" oninput="handleEditorInput()">\section{Introducción}
+Fíjate que el código LaTeX del editor central ahora está completamente limpio de comandos de metadatos globales. 
+
+\section{Ecuaciones del Proyecto}
+El título principal, el nombre y la fecha se manejan de forma totalmente independiente desde los formularios del panel de la izquierda.
+
+$$ f(x) = \sigma(W^T x + b) $$
+
+Cualquier cambio que realices en el formulario de metadatos o en este código se sincronizará de inmediato al pulsar "Recompilar".</textarea>
+        </div>
+
+        <div class="preview-container">
+            <div class="pdf-page">
+                
+                <div class="persistent-header">
+                    <div class="app-name">Synapse App</div>
+                    <div class="univ-name">Universidad Metropolitana</div>
+                    <hr class="divider">
+                </div>
+
+                <div class="latex-metadata-display">
+                    <div id="display-title" class="latex-display-title"></div>
+                    <div id="display-author" class="latex-display-author"></div>
+                    <div id="display-date" class="latex-display-date"></div>
+                </div>
+
+                <div id="preview"></div>
+                
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Función dedicada a transferir los valores de la barra lateral directamente a la hoja y guardarlos
+        function updateMetadata() {
+            const titleVal = document.getElementById('sidebar-title').value;
+            const authorVal = document.getElementById('sidebar-author').value;
+            const dateVal = document.getElementById('sidebar-date').value;
+
+            document.getElementById('display-title').innerText = titleVal;
+            document.getElementById('display-author').innerText = authorVal;
+            document.getElementById('display-date').innerText = dateVal;
+
+            // Guardar valores en LocalStorage para retener la información si se recarga
+            localStorage.setItem('meta_title', titleVal);
+            localStorage.setItem('meta_author', authorVal);
+            localStorage.setItem('meta_date', dateVal);
+        }
+
+        let compileTimer = 0;
+
+        function handleEditorInput() {
+            const editor = document.getElementById('editor');
+            localStorage.setItem('draft', editor.value);
+            window.clearTimeout(compileTimer);
+            compileTimer = window.setTimeout(compileLaTeX, 240);
+        }
+
+        function compileLaTeX() {
+            const source = document.getElementById('editor').value;
+            const preview = document.getElementById('preview');
+            preview.innerHTML = renderLatexDocument(source);
+
+            if (window.MathJax?.typesetPromise) {
+                MathJax.typesetClear?.([preview]);
+                MathJax.typesetPromise([preview]).catch((err) => console.log(err));
+            }
+        }
+
+        function renderLatexDocument(source) {
+            blockStore.length = 0;
+            mathStore.length = 0;
+            userMacros.length = 0;
+            const title = extractCommand(source, "title");
+            const author = extractCommand(source, "author");
+            const date = extractCommand(source, "date");
+
+            if (title) document.getElementById('display-title').innerText = title;
+            if (author) document.getElementById('display-author').innerText = author;
+            if (date) document.getElementById('display-date').innerText = date;
+
+            let body = extractEnvironment(source, "document") ?? source;
+            body = removeLatexComments(body);
+            body = extractUserMacros(body);
+            body = expandUserMacros(body);
+            body = body.replace(/\\maketitle\b/g, "");
+            body = body.replace(/\\(?:begingroup|endgroup|bgroup|egroup)\b/g, "");
+            body = body.replace(/\\(?:scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge)\b/g, "");
+            body = body.replace(/\\setlength\s*\{[^{}]+\}\s*\{[^{}]+\}/g, "");
+            body = body.replace(/\\renewcommand\s*\{[^{}]+\}\s*\{[^{}]+\}/g, "");
+            body = body.replace(/\\usetikzlibrary\{[^}]*\}/g, "");
+            body = body.replace(/\\def\\[a-zA-Z]+\{[^}]*\}/g, "");
+            body = body.replace(/\\(?:documentclass|usepackage|geometry)(?:\[[^\]]*\])?\{[^}]*\}/g, "");
+
+            return renderBlocks(body.trim());
+        }
+
+        const userMacros = [];
+
+        function extractUserMacros(input) {
+            let output = "";
+            let cursor = 0;
+            const commandPattern = /\\(?:newcommand|renewcommand)\s*\{/g;
+
+            while (true) {
+                commandPattern.lastIndex = cursor;
+                const match = commandPattern.exec(input);
+                if (!match) {
+                    output += input.slice(cursor);
+                    break;
+                }
+
+                output += input.slice(cursor, match.index);
+                const nameBraceStart = input.indexOf("{", match.index);
+                const nameBraceEnd = findMatchingBrace(input, nameBraceStart);
+                if (nameBraceStart === -1 || nameBraceEnd === -1) {
+                    output += input.slice(match.index);
+                    break;
+                }
+
+                const name = input.slice(nameBraceStart + 1, nameBraceEnd).replace(/^\\/, "").trim();
+                let afterName = nameBraceEnd + 1;
+                if (input[afterName] === "[") {
+                    const optionalEnd = input.indexOf("]", afterName);
+                    if (optionalEnd !== -1) afterName = optionalEnd + 1;
+                }
+
+                while (/\s/.test(input[afterName] ?? "")) afterName += 1;
+                if (input[afterName] !== "{") {
+                    cursor = afterName;
+                    continue;
+                }
+
+                const bodyEnd = findMatchingBrace(input, afterName);
+                if (bodyEnd === -1) {
+                    output += input.slice(match.index);
+                    break;
+                }
+
+                userMacros.push({ name, body: input.slice(afterName + 1, bodyEnd) });
+                cursor = bodyEnd + 1;
+            }
+
+            return output;
+        }
+
+        function expandUserMacros(input) {
+            return userMacros.reduce((text, macro) => {
+                const pattern = new RegExp(`\\\\${escapeRegExp(macro.name)}\\b`, "g");
+                return text.replace(pattern, macro.body);
+            }, input);
+        }
+
+        function renderBlocks(input) {
+            let text = input;
+            text = renderNamedEnvironment(text, "center", (content) => `<div class="latex-center">${renderBlocks(content)}</div>`);
+            text = renderNamedEnvironment(text, "flushright", (content) => `<div class="latex-flushright">${renderBlocks(content)}</div>`);
+            text = renderNamedEnvironment(text, "flushleft", (content) => `<div class="latex-flushleft">${renderBlocks(content)}</div>`);
+            text = renderNamedEnvironment(text, "quote", (content) => `<blockquote class="latex-quote">${renderBlocks(content)}</blockquote>`);
+            text = renderAdjustboxEnvironment(text);
+            text = renderMinipages(text);
+            text = renderTikzPictures(text);
+            text = renderIncludeGraphics(text);
+            text = renderNamedEnvironment(text, "itemize", renderItemize);
+            text = renderNamedEnvironment(text, "enumerate", renderEnumerate);
+            text = renderTabulars(text);
+            text = renderDisplayMathBlocks(text);
+            text = renderMathEnvironments(text);
+            text = text.replace(/\\\[\s*(@@BLOCK_\d+@@)\s*\\\]/g, "$1");
+
+            text = text
+                .replace(/\\section\*?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_, title) => blockToken(`<div class="latex-section">${renderInline(title)}</div>`))
+                .replace(/\\subsection\*?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_, title) => blockToken(`<div class="latex-subsection">${renderInline(title)}</div>`))
+                .replace(/\\subsubsection\*?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_, title) => blockToken(`<div class="latex-subsubsection">${renderInline(title)}</div>`))
+                .replace(/\\paragraph\*?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_, title) => `@@PARAGRAPH_TITLE_START@@${title}.@@PARAGRAPH_TITLE_END@@ `)
+                .replace(/\\vspace\*?\{([^}]*)\}/g, (_, size) => blockToken(`<div style="height:${latexLengthToCss(size)}"></div>`))
+                .replace(/\\hspace\*?\{([^}]*)\}/g, (_, size) => `@@HSPACE_${latexLengthToCss(size)}@@`)
+                .replace(/\\hrule(?:\s+height\s+[0-9.]+\s*(?:pt|cm|mm|in|px|em|rem))?/g, blockToken(`<hr class="latex-rule">`))
+                .replace(/\\noindent\b/g, "")
+                .replace(/\\newpage\b|\\clearpage\b/g, blockToken(`<div style="break-after:page; height:1px;"></div>`))
+                .replace(/\\\\(\[[^\]]*\])?/g, "@@LINEBREAK@@");
+
+            return paragraphsFromText(text);
+        }
+
+        const blockStore = [];
+
+        function blockToken(html) {
+            const token = `@@BLOCK_${blockStore.length}@@`;
+            blockStore.push(html);
+            return token;
+        }
+
+        function restoreBlocks(html) {
+            return html.replace(/@@BLOCK_(\d+)@@/g, (_, index) => blockStore[Number(index)] ?? "");
+        }
+
+        function paragraphsFromText(text) {
+            const chunks = text
+                .split(/\n\s*\n/g)
+                .map((chunk) => chunk.trim())
+                .filter(Boolean);
+
+            return chunks
+                .map(renderParagraphChunk)
+                .join("");
+        }
+
+        function renderParagraphChunk(chunk) {
+            const parts = chunk.split(/(@@BLOCK_\d+@@)/g).filter(Boolean);
+            return parts
+                .map((part) => {
+                    if (/^@@BLOCK_\d+@@$/.test(part)) {
+                        return restoreBlocks(part);
+                    }
+                    const text = part.trim();
+                    if (!text) return "";
+                    const restored = restoreBlocks(text);
+                    if (/^\s*<(div|ul|ol|table|h\d|section|article)\b/i.test(restored)) {
+                        return restored;
+                    }
+                    const inline = renderInline(restored.replace(/\n/g, " ")).trim();
+                    return inline ? `<p>${inline}</p>` : "";
+                })
+                .join("");
+        }
+
+        function renderNamedEnvironment(text, envName, renderer) {
+            let output = text;
+            let previous = "";
+            const pattern = new RegExp(`\\\\begin\\{${envName}\\}(?:\\[[^\\]]*\\])?((?:(?!\\\\begin\\{${envName}\\})[\\s\\S])*?)\\\\end\\{${envName}\\}`, "g");
+            while (output !== previous) {
+                previous = output;
+                output = output.replace(pattern, (_, content) => blockToken(renderer(content.trim())));
+            }
+            return output;
+        }
+
+        function renderAdjustboxEnvironment(text) {
+            return text.replace(/\\begin\{adjustbox\}(?:\[[^\]]*\])?(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})?([\s\S]*?)\\end\{adjustbox\}/g, (_, content) => {
+                return blockToken(`<div class="latex-adjustbox">${renderBlocks(content.trim())}</div>`);
+            });
+        }
+
+        function renderMinipages(text) {
+            let output = "";
+            let cursor = 0;
+            const beginToken = "\\begin{minipage}";
+            const endToken = "\\end{minipage}";
+
+            while (cursor < text.length) {
+                const begin = text.indexOf(beginToken, cursor);
+                if (begin === -1) {
+                    output += text.slice(cursor);
+                    break;
+                }
+
+                output += text.slice(cursor, begin);
+                const widthStart = text.indexOf("{", begin + beginToken.length);
+                const widthEnd = widthStart === -1 ? -1 : findMatchingBrace(text, widthStart);
+                const end = text.indexOf(endToken, widthEnd + 1);
+
+                if (widthStart === -1 || widthEnd === -1 || end === -1) {
+                    output += text.slice(begin);
+                    break;
+                }
+
+                const width = latexLengthToCss(text.slice(widthStart + 1, widthEnd));
+                const content = text.slice(widthEnd + 1, end).trim();
+                output += blockToken(`<div class="latex-minipage" style="width:${width}">${renderBlocks(content)}</div>`);
+                cursor = end + endToken.length;
+            }
+
+            return output.replace(/(@@BLOCK_\d+@@)\s*(@@BLOCK_\d+@@)/g, (_, left, right) => {
+                return blockToken(`<div class="latex-minipage-row">${restoreBlocks(left)}${restoreBlocks(right)}</div>`);
+            });
+        }
+
+        function renderTikzPictures(text) {
+            return text.replace(/\\begin\{tikzpicture\}(?:\[([^\]]*)\])?([\s\S]*?)\\end\{tikzpicture\}/g, (_, options, content) => {
+                return blockToken(renderTikzSvg(options ?? "", content));
+            });
+        }
+
+        function renderIncludeGraphics(text) {
+            return text.replace(/\\includegraphics(?:\[([^\]]*)\])?\{([^}]+)\}/g, (_, options, fileName) => {
+                const width = parseGraphicsWidth(options ?? "");
+                const src = encodeURI(fileName.trim());
+                const style = width ? ` style="width:${width}"` : "";
+                const fallback = "this.replaceWith(Object.assign(document.createElement('div'),{className:'latex-image-missing',textContent:'No se pudo cargar la imagen'}))";
+                return blockToken(`<figure class="latex-figure"><img src="${escapeAttribute(src)}"${style} alt="${escapeAttribute(fileName.trim())}" onerror="${fallback}"></figure>`);
+            });
+        }
+
+        function parseGraphicsWidth(options) {
+            const width = options.match(/width\s*=\s*([^,\]]+)/)?.[1]?.trim();
+            return width ? latexLengthToCss(width) : "";
+        }
+
+        function renderMathEnvironments(text) {
+            return text.replace(/\\begin\{(align\*?|aligned|equation\*?|gather\*?|multline\*?|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\}([\s\S]*?)\\end\{\1\}/g, (_, env, content) => {
+                const aspa = renderAspaSimple(content);
+                if (aspa) return blockToken(aspa);
+                let normalizedEnv = env;
+                if (env === "align" || env === "align*") normalizedEnv = "aligned";
+                const math = `\\[\\begin{${normalizedEnv}}${content}\\end{${normalizedEnv}}\\]`;
+                return blockToken(`<div class="latex-math-scroll">${math}</div>`);
+            });
+        }
+
+        function renderDisplayMathBlocks(text) {
+            return text.replace(/\\\[([\s\S]*?)\\\]/g, (_, content) => {
+                if (/@@BLOCK_\d+@@/.test(content)) return `\\[${content}\\]`;
+                return blockToken(`<div class="latex-math-scroll">\\[${content.trim()}\\]</div>`);
+            });
+        }
+
+        function renderAspaSimple(content) {
+            const normalized = content
+                .replace(/&/g, " ")
+                .replace(/\\\\/g, "\n")
+                .replace(/\\searrow/g, "↘")
+                .replace(/\\nearrow/g, "↗")
+                .replace(/\\swarrow/g, "↙")
+                .replace(/\\nwarrow/g, "↖")
+                .replace(/\\rightarrow/g, "→")
+                .replace(/\\leftarrow/g, "←")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            if (!/[↘↗↙↖]/.test(normalized)) return "";
+
+            const rowMatches = [...content.matchAll(/([^\\&]+)&?\s*\\(searrow|nearrow|swarrow|nwarrow)\s*([^\\]+?)\\rightarrow\s*([^\\]+?)(?=\\\\|$)/g)];
+            if (rowMatches.length < 2) return "";
+
+            const arrowMap = { searrow: "↘", nearrow: "↗", swarrow: "↙", nwarrow: "↖" };
+            const rows = rowMatches.map((match) => {
+                return [
+                    renderInline(match[1].trim()),
+                    `<span class="arrow">${arrowMap[match[2]]}</span>`,
+                    renderInline(match[3].trim()),
+                    `<span class="arrow">→</span>`,
+                    renderInline(match[4].trim())
+                ];
+            });
+
+            return `<div class="latex-aspa-wrap"><div class="latex-aspa">${rows.map((row) => row.map((cell) => `<span>${cell}</span>`).join("")).join("")}</div></div>`;
+        }
+
+        function renderTikzSvg(options, content) {
+            const scaleMatch = options.match(/x\s*=\s*([0-9.]+)cm\s*,\s*y\s*=\s*([0-9.]+)cm/);
+            const unitX = scaleMatch ? Number(scaleMatch[1]) * 34 : 46;
+            const unitY = scaleMatch ? Number(scaleMatch[2]) * 34 : 46;
+            const nodes = new Map();
+            const shapes = [];
+            const edges = [];
+            const labels = [];
+            let bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+
+            const includePoint = (x, y) => {
+                bounds.minX = Math.min(bounds.minX, x);
+                bounds.maxX = Math.max(bounds.maxX, x);
+                bounds.minY = Math.min(bounds.minY, y);
+                bounds.maxY = Math.max(bounds.maxY, y);
+            };
+
+            const parseColor = (source, fallback = "#d9e8ff") => {
+                const lower = source.toLowerCase();
+                if (lower.includes("orange")) return "#f5a623";
+                if (lower.includes("cyan")) return "#96e4f0";
+                if (lower.includes("blue")) return "#9dc4ff";
+                if (lower.includes("red")) return "#ff8f8f";
+                if (lower.includes("gray") || lower.includes("grey")) return "#d8d8d8";
+                return fallback;
+            };
+
+            const point = (x, y) => ({ x: Number(x), y: Number(y) });
+            const commands = content.split(";").map((command) => command.trim()).filter(Boolean);
+
+            commands.forEach((command) => {
+                const grid = command.match(/\\draw(?:\[[^\]]*\])?\s*\(([-0-9.]+),\s*([-0-9.]+)\)\s*grid\s*\(([-0-9.]+),\s*([-0-9.]+)\)/);
+                if (grid) {
+                    const from = point(grid[1], grid[2]);
+                    const to = point(grid[3], grid[4]);
+                    shapes.push({ type: "grid", from, to });
+                    includePoint(from.x, from.y);
+                    includePoint(to.x, to.y);
+                    return;
+                }
+
+                const rect = command.match(/\\(?:fill|draw)(?:\[([^\]]*)\])?\s*\(([-0-9.]+),\s*([-0-9.]+)\)\s*rectangle\s*\(([-0-9.]+),\s*([-0-9.]+)\)/);
+                if (rect) {
+                    const from = point(rect[2], rect[3]);
+                    const to = point(rect[4], rect[5]);
+                    shapes.push({ type: "rect", from, to, fill: parseColor(rect[1] ?? ""), stroke: "#333" });
+                    includePoint(from.x, from.y);
+                    includePoint(to.x, to.y);
+                    return;
+                }
+
+                const node = command.match(/\\node(?:\[([^\]]*)\])?\s*(?:\(([^)]+)\))?\s*at\s*\(([-0-9.]+),\s*([-0-9.]+)\)\s*\{([^{}]*)\}/);
+                if (node) {
+                    const id = (node[2] ?? node[5]).trim();
+                    const p = point(node[3], node[4]);
+                    const label = node[5].trim();
+                    const opts = node[1] ?? "";
+                    const isGraphNode = /nodo|circle|draw|fill/.test(opts);
+                    const nodeData = { id, ...p, label, fill: parseColor(opts), graph: isGraphNode };
+                    nodes.set(id, nodeData);
+                    labels.push(nodeData);
+                    includePoint(p.x, p.y);
+                    return;
+                }
+
+                const edge = command.match(/\\path(?:\[([^\]]*)\])?\s*\(([^)]+)\)\s*edge(?:\[[^\]]*\])?(?:\s*node(?:\[[^\]]*\])?\s*\{([^{}]*)\})?\s*\(([^)]+)\)/);
+                if (edge) {
+                    edges.push({ from: edge[2].trim(), to: edge[4].trim(), label: (edge[3] ?? "").trim(), arrow: /flecha|->|latex/.test(edge[1] ?? "") });
+                    return;
+                }
+            });
+
+            if (!Number.isFinite(bounds.minX)) {
+                return `<div class="latex-tikz-diagram"><svg viewBox="0 0 420 90" role="img" aria-label="Diagrama TikZ"><text x="210" y="48" text-anchor="middle" font-family="Times New Roman" font-size="15">Diagrama TikZ no compatible todavía</text></svg></div>`;
+            }
+
+            const pad = 44;
+            const width = Math.max(260, (bounds.maxX - bounds.minX) * unitX + pad * 2);
+            const height = Math.max(120, (bounds.maxY - bounds.minY) * unitY + pad * 2);
+            const sx = (x) => (x - bounds.minX) * unitX + pad;
+            const sy = (y) => (bounds.maxY - y) * unitY + pad;
+            const pieces = [];
+
+            pieces.push(`<defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#444"/></marker></defs>`);
+
+            shapes.forEach((shape) => {
+                if (shape.type === "grid") {
+                    const x1 = Math.min(sx(shape.from.x), sx(shape.to.x));
+                    const x2 = Math.max(sx(shape.from.x), sx(shape.to.x));
+                    const y1 = Math.min(sy(shape.from.y), sy(shape.to.y));
+                    const y2 = Math.max(sy(shape.from.y), sy(shape.to.y));
+                    for (let x = Math.ceil(Math.min(shape.from.x, shape.to.x)); x <= Math.floor(Math.max(shape.from.x, shape.to.x)); x++) {
+                        pieces.push(`<line x1="${sx(x)}" y1="${y1}" x2="${sx(x)}" y2="${y2}" stroke="#dedede" stroke-width="1"/>`);
+                    }
+                    for (let y = Math.ceil(Math.min(shape.from.y, shape.to.y)); y <= Math.floor(Math.max(shape.from.y, shape.to.y)); y++) {
+                        pieces.push(`<line x1="${x1}" y1="${sy(y)}" x2="${x2}" y2="${sy(y)}" stroke="#dedede" stroke-width="1"/>`);
+                    }
+                } else if (shape.type === "rect") {
+                    const x = Math.min(sx(shape.from.x), sx(shape.to.x));
+                    const y = Math.min(sy(shape.from.y), sy(shape.to.y));
+                    const w = Math.abs(sx(shape.to.x) - sx(shape.from.x));
+                    const h = Math.abs(sy(shape.to.y) - sy(shape.from.y));
+                    pieces.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${shape.fill}" stroke="${shape.stroke}" stroke-width="1" opacity="0.8"/>`);
+                }
+            });
+
+            edges.forEach((edge) => {
+                const from = nodes.get(edge.from);
+                const to = nodes.get(edge.to);
+                if (!from || !to) return;
+                const x1 = sx(from.x);
+                const y1 = sy(from.y);
+                const x2 = sx(to.x);
+                const y2 = sy(to.y);
+                pieces.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#444" stroke-width="2" ${edge.arrow ? 'marker-end="url(#arrowhead)"' : ""}/>`);
+                if (edge.label) {
+                    pieces.push(`<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}" text-anchor="middle" font-family="Times New Roman" font-size="14" fill="#9a1f1f">${escapeHtml(edge.label)}</text>`);
+                }
+            });
+
+            labels.forEach((node) => {
+                const x = sx(node.x);
+                const y = sy(node.y);
+                if (node.graph) {
+                    pieces.push(`<circle cx="${x}" cy="${y}" r="17" fill="${node.fill}" stroke="#333" stroke-width="1.5"/>`);
+                    pieces.push(`<text x="${x}" y="${y + 5}" text-anchor="middle" font-family="Times New Roman" font-size="14" font-weight="700">${escapeHtml(node.label)}</text>`);
+                } else {
+                    pieces.push(`<text x="${x}" y="${y + 5}" text-anchor="middle" font-family="Times New Roman" font-size="14">${escapeHtml(node.label)}</text>`);
+                }
+            });
+
+            return `<div class="latex-tikz-diagram"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Diagrama TikZ">${pieces.join("")}</svg></div>`;
+        }
+
+        function renderItemize(content) {
+            const items = splitLatexItems(content);
+            return `<ul>${items.map((item) => `<li>${renderBlocks(item)}</li>`).join("")}</ul>`;
+        }
+
+        function renderEnumerate(content) {
+            const items = splitLatexItems(content);
+            return `<ol>${items.map((item) => `<li>${renderBlocks(item)}</li>`).join("")}</ol>`;
+        }
+
+        function splitLatexItems(content) {
+            return content
+                .split(/\\item(?:\[[^\]]*\])?/g)
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        function renderTabulars(text) {
+            return renderTableEnvironment(renderTableEnvironment(renderTableEnvironment(text, "longtable"), "tabular"), "array");
+        }
+
+        function renderTableEnvironment(text, envName) {
+            let output = "";
+            let cursor = 0;
+            const beginToken = `\\begin{${envName}}`;
+            const endToken = `\\end{${envName}}`;
+
+            while (cursor < text.length) {
+                const begin = text.indexOf(beginToken, cursor);
+                if (begin === -1) {
+                    output += text.slice(cursor);
+                    break;
+                }
+
+                output += text.slice(cursor, begin);
+                let afterBegin = begin + beginToken.length;
+                if (text[afterBegin] === "[") {
+                    const optionEnd = text.indexOf("]", afterBegin);
+                    if (optionEnd !== -1) afterBegin = optionEnd + 1;
+                }
+
+                const specStart = text.indexOf("{", afterBegin);
+                if (specStart === -1) {
+                    output += text.slice(begin);
+                    break;
+                }
+
+                const specEnd = findMatchingBrace(text, specStart);
+                if (specEnd === -1) {
+                    output += text.slice(begin);
+                    break;
+                }
+
+                const end = text.indexOf(endToken, specEnd + 1);
+                if (end === -1) {
+                    output += text.slice(begin);
+                    break;
+                }
+
+                const spec = text.slice(specStart + 1, specEnd);
+                const content = text.slice(specEnd + 1, end);
+                output += blockToken(renderTabular(spec, content));
+                cursor = end + endToken.length;
+            }
+
+            return output;
+        }
+
+        function renderTabular(spec, content) {
+            const alignments = parseColumnSpec(spec);
+            const cleaned = content
+                .replace(/\\(?:hline|toprule|midrule|bottomrule)\s*/g, "")
+                .replace(/\\cline\{[^}]*\}/g, "")
+                .replace(/\\(?:endfirsthead|endhead|endfoot|endlastfoot)\b/g, "")
+                .replace(/\\caption(?:\[[^\]]*\])?\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, "")
+                .replace(/\\label\{[^}]*\}/g, "")
+                .replace(/\\(?:begingroup|endgroup|bgroup|egroup)\b/g, "")
+                .replace(/\\(?:scriptsize|footnotesize|small|normalsize)\b/g, "")
+                .replace(/\\setlength\s*\{[^{}]+\}\s*\{[^{}]+\}/g, "")
+                .replace(/\\multicolumn\{(\d+)\}\{[^{}]*\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "$2")
+                .replace(/\\multirow\{[^{}]*\}\{[^{}]*\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "$1")
+                .trim();
+            const rows = cleaned
+                .split(/\\\\(?:\[[^\]]*\])?/g)
+                .map((row) => row.trim())
+                .filter(Boolean);
+
+            const htmlRows = rows.map((row) => {
+                const cells = splitTableCells(row);
+                return `<tr>${cells.map((cell, index) => {
+                    const align = alignmentFromSpec(alignments[index]);
+                    return `<td style="text-align:${align}">${renderInline(cell.trim())}</td>`;
+                }).join("")}</tr>`;
+            }).join("");
+
+            return `<table class="latex-table"><tbody>${htmlRows}</tbody></table>`;
+        }
+
+        function splitTableCells(row) {
+            const cells = [];
+            let current = "";
+            let depth = 0;
+            for (let i = 0; i < row.length; i++) {
+                const char = row[i];
+                if (char === "{") depth += 1;
+                if (char === "}") depth = Math.max(0, depth - 1);
+                if (char === "&" && depth === 0) {
+                    cells.push(current);
+                    current = "";
+                } else {
+                    current += char;
+                }
+            }
+            cells.push(current);
+            return cells;
+        }
+
+        function findMatchingBrace(text, openIndex) {
+            let depth = 0;
+            for (let index = openIndex; index < text.length; index++) {
+                const char = text[index];
+                const previous = text[index - 1];
+                if (char === "{" && previous !== "\\") depth += 1;
+                if (char === "}" && previous !== "\\") {
+                    depth -= 1;
+                    if (depth === 0) return index;
+                }
+            }
+            return -1;
+        }
+
+        function alignmentFromSpec(spec) {
+            if (spec === "r") return "right";
+            if (spec === "c") return "center";
+            return "left";
+        }
+
+        function parseColumnSpec(spec) {
+            const columns = [];
+            for (let index = 0; index < spec.length; index++) {
+                const char = spec[index];
+                if ("lcr".includes(char)) {
+                    columns.push(char);
+                } else if (char === "p" || char === "m" || char === "b") {
+                    columns.push("l");
+                    const braceStart = spec.indexOf("{", index);
+                    if (braceStart !== -1) {
+                        const braceEnd = findMatchingBrace(spec, braceStart);
+                        if (braceEnd !== -1) index = braceEnd;
+                    }
+                }
+            }
+            return columns;
+        }
+
+        function renderInline(input) {
+            let text = protectMath(input);
+            text = escapeHtml(text);
+
+            text = text
+                .replace(/@@PARAGRAPH_TITLE_START@@([\s\S]*?)@@PARAGRAPH_TITLE_END@@/g, (_, title) => `<span class="latex-paragraph-title">${renderInline(title)}</span>`)
+                .replace(/@@LINEBREAK@@/g, "<br>")
+                .replace(/@@HSPACE_([^@]+)@@/g, '<span style="display:inline-block;width:$1"></span>')
+                .replace(/\\hspace\*?\{([^}]*)\}/g, (_, size) => `<span style="display:inline-block;width:${latexLengthToCss(size)}"></span>`)
+                .replace(/\\begin\{(?:itemize|enumerate)\}(?:\[[^\]]*\])?/g, "")
+                .replace(/\\end\{(?:itemize|enumerate)\}/g, "")
+                .replace(/\\item(?:\[([^\]]*)\])?/g, (_, label) => label ? `<br><strong>${label}</strong> ` : "<br>• ")
+                .replace(/\\(?:begingroup|endgroup|bgroup|egroup)\b/g, "")
+                .replace(/\\(?:scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|displaystyle|textstyle|scriptstyle)\b/g, "")
+                .replace(/\\setlength\s*\{[^{}]+\}\s*\{[^{}]+\}/g, "")
+                .replace(/\\(?:toprule|midrule|bottomrule|hline|endfirsthead|endhead|endfoot|endlastfoot)\s*/g, "")
+                .replace(/\\hfill\b/g, '<span style="display:inline-block;width:1.5em"></span>')
+                .replace(/\\left(?=\s*[()[\]{}|.])/g, "")
+                .replace(/\\right(?=\s*[()[\]{}|.])/g, "")
+                .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, (_, top, bottom) => storeMath(`\\(\\frac{${top}}{${bottom}}\\)`))
+                .replace(/\\frac\s*([^\s{}])\s*([^\s{}])/g, (_, top, bottom) => storeMath(`\\(\\frac{${top}}{${bottom}}\\)`))
+                .replace(/\\noindent\b/g, "")
+                .replace(/\\textsf\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<span>$1</span>")
+                .replace(/\\textbf\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<strong>$1</strong>")
+                .replace(/\\textit\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<em>$1</em>")
+                .replace(/\\textsl\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<em>$1</em>")
+                .replace(/\\textsc\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, '<span style="font-variant:small-caps">$1</span>')
+                .replace(/\\textrm\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<span>$1</span>")
+                .replace(/\\textnormal\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<span>$1</span>")
+                .replace(/\\text\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<span>$1</span>")
+                .replace(/\\emph\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<em>$1</em>")
+                .replace(/\\underline\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<u>$1</u>")
+                .replace(/\\texttt\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, "<code>$1</code>")
+                .replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, '<a href="$1" target="_blank" rel="noreferrer">$2</a>')
+                .replace(/\\url\{([^}]*)\}/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
+                .replace(/\\quad/g, "&emsp;")
+                .replace(/\\qquad/g, "&emsp;&emsp;")
+                .replace(/\\Rightarrow/g, "⇒")
+                .replace(/\\Leftarrow/g, "⇐")
+                .replace(/\\Leftrightarrow/g, "⇔")
+                .replace(/\\rightarrow/g, "→")
+                .replace(/\\leftarrow/g, "←")
+                .replace(/\\leftrightarrow/g, "↔")
+                .replace(/\\searrow/g, "↘")
+                .replace(/\\swarrow/g, "↙")
+                .replace(/\\nearrow/g, "↗")
+                .replace(/\\nwarrow/g, "↖")
+                .replace(/\\land/g, "∧")
+                .replace(/\\wedge/g, "∧")
+                .replace(/\\lor/g, "∨")
+                .replace(/\\vee/g, "∨")
+                .replace(/\\neg/g, "¬")
+                .replace(/\\lnot/g, "¬")
+                .replace(/\\to/g, "→")
+                .replace(/\\implies/g, "⇒")
+                .replace(/\\iff/g, "⇔")
+                .replace(/\\infty/g, "∞")
+                .replace(/\\,/g, "&thinsp;")
+                .replace(/\\%/g, "%")
+                .replace(/\\&/g, "&amp;")
+                .replace(/\\_/g, "_")
+                .replace(/\\#/g, "#")
+                .replace(/\\LaTeX/g, "LaTeX")
+                .replace(/\\TeX/g, "TeX")
+                .replace(/``([^`]+)''/g, "“$1”")
+                .replace(/`([^`]+)'/g, "‘$1’")
+                .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{[^}]*\})?/g, (cmd) => `<span class="latex-error">${cmd}</span>`);
+
+            return restoreMath(text);
+        }
+
+        const mathStore = [];
+
+        function protectMath(input) {
+            let text = input
+                .replace(/\\begin\{(?:align\*?|aligned|equation\*?|gather\*?|multline\*?|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\}[\s\S]*?\\end\{(?:align\*?|aligned|equation\*?|gather\*?|multline\*?|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\}/g, storeDisplayEnvironment)
+                .replace(/\$\$[\s\S]*?\$\$/g, storeMath)
+                .replace(/\\\[[\s\S]*?\\\]/g, storeMath)
+                .replace(/\$[^$\n]+\$/g, storeMath);
+            return protectDelimitedMath(text, "\\(", "\\)");
+        }
+
+        function protectDelimitedMath(input, openToken, closeToken) {
+            let output = "";
+            let cursor = 0;
+            while (cursor < input.length) {
+                const start = input.indexOf(openToken, cursor);
+                if (start === -1) {
+                    output += input.slice(cursor);
+                    break;
+                }
+
+                const end = input.indexOf(closeToken, start + openToken.length);
+                if (end === -1) {
+                    output += input.slice(cursor);
+                    break;
+                }
+
+                output += input.slice(cursor, start);
+                output += storeMath(input.slice(start, end + closeToken.length));
+                cursor = end + closeToken.length;
+            }
+            return output;
+        }
+
+        function storeMath(match) {
+            const token = `@@MATH_${mathStore.length}@@`;
+            mathStore.push(match);
+            return token;
+        }
+
+        function storeDisplayEnvironment(match) {
+            const token = `@@MATH_${mathStore.length}@@`;
+            const env = match.match(/^\\begin\{([^}]+)\}/)?.[1] ?? "";
+            let normalized = match;
+            if (env === "align" || env === "align*") {
+                normalized = normalized
+                    .replace(/^\\begin\{align\*?\}/, "\\begin{aligned}")
+                    .replace(/\\end\{align\*?\}$/, "\\end{aligned}");
+            }
+            mathStore.push(`\\[${normalized}\\]`);
+            return token;
+        }
+
+        function restoreMath(input) {
+            return input.replace(/@@MATH_(\d+)@@/g, (_, index) => {
+                const math = (mathStore[Number(index)] ?? "").replace(/@@LINEBREAK@@/g, "\\\\");
+                if (math.startsWith("$$") || math.startsWith("\\[")) {
+                    return `<span class="latex-math-scroll">${math}</span>`;
+                }
+                return math;
+            });
+        }
+
+        function extractEnvironment(source, envName) {
+            const pattern = new RegExp(`\\\\begin\\{${envName}\\}([\\s\\S]*?)\\\\end\\{${envName}\\}`);
+            const match = source.match(pattern);
+            return match ? match[1] : null;
+        }
+
+        function extractCommand(source, command) {
+            const match = source.match(new RegExp(`\\\\${command}\\{([^}]*)\\}`));
+            return match ? match[1].trim() : "";
+        }
+
+        function removeLatexComments(input) {
+            return input
+                .split("\n")
+                .map((line) => line.replace(/(^|[^\\])%.*/, "$1").trimEnd())
+                .join("\n");
+        }
+
+        function latexLengthToCss(value) {
+            const clean = value.trim();
+            const textWidth = clean.match(/^([0-9.]+)\s*\\textwidth$/);
+            if (textWidth) return `${Math.min(100, Number(textWidth[1]) * 100)}%`;
+            if (clean === "\\textwidth") return "100%";
+            const match = clean.match(/^([0-9.]+)\s*(cm|mm|in|pt|em|rem|px)$/);
+            if (!match) return "1em";
+            return `${match[1]}${match[2]}`;
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;");
+        }
+
+        function escapeAttribute(value) {
+            return escapeHtml(value).replaceAll('"', "&quot;");
+        }
+
+        function escapeRegExp(value) {
+            return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+
+        // Al iniciar la aplicación, recupera las memorias locales y ejecuta la sincronización
+        window.onload = function() {
+            // Cargar Código LaTeX
+            const savedDraft = localStorage.getItem('draft');
+            if (savedDraft) document.getElementById('editor').value = savedDraft;
+
+            // Cargar Metadatos de la barra lateral
+            const savedTitle = localStorage.getItem('meta_title');
+            if (savedTitle) document.getElementById('sidebar-title').value = savedTitle;
+
+            const savedAuthor = localStorage.getItem('meta_author');
+            if (savedAuthor) document.getElementById('sidebar-author').value = savedAuthor;
+
+            const savedDate = localStorage.getItem('meta_date');
+            if (savedDate) document.getElementById('sidebar-date').value = savedDate;
+
+            // Pintar y compilar todo
+            updateMetadata();
+            compileLaTeX();
+        };
+    </script>
+</body>
+</html>
