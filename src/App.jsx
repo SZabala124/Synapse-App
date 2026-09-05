@@ -94,7 +94,7 @@ export default function App({ convexEnabled = false }) {
   return (
     <>
       {authRequested ? (
-        <AuthPanel initialMode={authMode} onBack={() => setAuthRequested(false)} onAuthSuccess={handleAuthSuccess} />
+        <AuthPanel initialMode={authMode} onBack={() => setAuthRequested(false)} onAuthSuccess={handleAuthSuccess} convexEnabled={convexEnabled} />
       ) : (
         <PublicLanding onAuthClick={openAuth} />
       )}
@@ -146,6 +146,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
     selectedSubjectCodes: subjectSelection?.selectedSubjectCodes ?? currentUser.selectedSubjectCodes ?? [],
   }), [currentUser, entitlements?.plan, subjectSelection?.plan, subjectSelection?.selectedSubjectCodes]);
   const isAdminForMaterialAccess = subjectSelection?.userType === "admin" || ADMIN_EMAIL_FALLBACKS.includes(currentUser.email.toLowerCase());
+  const canSeeAllCareerSubjects = isAdminForMaterialAccess || canUserSeeAllCareerSubjects(currentUserWithSubjectSelection);
   const pendingAdminPaymentCount = useQuery(api.payments.pendingCount, convexEnabled && isAdminForMaterialAccess ? { adminEmail: currentUser.email } : "skip");
   const isBlockedUser = convexEnabled && (subjectSelection?.userType === "blocked" || entitlements?.userType === "blocked");
   const hasPaidPlan = ["pro", "excellence"].includes(currentUserWithSubjectSelection.plan);
@@ -266,6 +267,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
             <ConvexFlowSection
               currentUser={currentUserWithSubjectSelection}
               canLoadMaterials={canLoadMaterialData}
+              canSeeAllCareerSubjects={canSeeAllCareerSubjects}
               onOpenMaterialInLibrary={(material, course) => {
                 setMaterialSearch(material.title);
                 setMaterialSubject(course?.code ?? materialSubjectIds(material)[0] ?? "Todas");
@@ -282,6 +284,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
               currentUser={currentUserWithSubjectSelection}
               entitlements={entitlements}
               canLoadMaterials={canLoadMaterialData}
+              canSeeAllCareerSubjects={canSeeAllCareerSubjects}
               search={materialSearch}
               format={materialFormat}
               level={materialLevel}
@@ -322,7 +325,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
           <ToolsView
             subjects={buildToolSubjectsForUser(
               currentUserWithSubjectSelection,
-              subjectSelection?.userType === "admin" || ADMIN_EMAIL_FALLBACKS.includes(currentUser.email.toLowerCase()) || hasPaidPlan,
+              canSeeAllCareerSubjects,
             )}
             currentPlan={currentUserWithSubjectSelection.plan}
             entitlements={entitlements}
@@ -650,7 +653,7 @@ function ConvexProfileSection({ currentUser, subjectSelection, pendingPayment, o
   );
 }
 
-function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = true, search, format, level, subject, sort, savedOnly, onSearchChange, onFormatChange, onLevelChange, onSubjectChange, onSortChange, onSavedOnlyChange }) {
+function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = true, canSeeAllCareerSubjects = false, search, format, level, subject, sort, savedOnly, onSearchChange, onFormatChange, onLevelChange, onSubjectChange, onSortChange, onSavedOnlyChange }) {
   const args = useMemo(() => ({ userEmail: currentUser.email, search, format, level, subject, sort, savedOnly }), [currentUser.email, search, format, level, subject, sort, savedOnly]);
   const filterKey = useMemo(() => JSON.stringify({ userEmail: currentUser.email, search, format, level, subject, sort, savedOnly, canLoadMaterials }), [currentUser.email, search, format, level, subject, sort, savedOnly, canLoadMaterials]);
   const libraryState = useQuery(api.documents.libraryRevision, canLoadMaterials ? {} : "skip");
@@ -658,8 +661,8 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   const catalogScopeKey = useMemo(() => [
     currentUser.email,
     (currentUser.careers ?? []).filter(Boolean).sort().join(","),
-    (currentUser.selectedSubjectCodes ?? []).filter(Boolean).sort().join(","),
-  ].join("::"), [currentUser.careers, currentUser.email, currentUser.selectedSubjectCodes]);
+    canSeeAllCareerSubjects ? "__all__" : (currentUser.selectedSubjectCodes ?? []).filter(Boolean).sort().join(","),
+  ].join("::"), [canSeeAllCareerSubjects, currentUser.careers, currentUser.email, currentUser.selectedSubjectCodes]);
   const materialCatalog = useMaterialCatalog({ userEmail: currentUser.email, scopeKey: catalogScopeKey, serverRevision: libraryRevision, enabled: canLoadMaterials });
   const facetArgs = useMemo(() => ({ userEmail: currentUser.email, search, format, level, subject, savedOnly }), [currentUser.email, search, format, level, subject, savedOnly]);
   const access = useQuery(api.users.getAccess, { email: currentUser.email });
@@ -692,8 +695,8 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   const isAdminUser = access?.userType === "admin" || (access === undefined && ADMIN_EMAIL_FALLBACKS.includes(currentUser.email.toLowerCase()));
   const catalogRows = canLoadMaterials ? mergeMaterialRows(materialCatalog.results ?? [], localRows, hiddenRowIds) : [];
   const allowedSubjectCodes = useMemo(
-    () => getSelectedSubjectCodeSet(currentUser, isAdminUser),
-    [currentUser.selectedSubjectCodes, currentUser.userType, isAdminUser],
+    () => getSelectedSubjectCodeSet(currentUser, isAdminUser || canSeeAllCareerSubjects),
+    [canSeeAllCareerSubjects, currentUser.selectedSubjectCodes, currentUser.userType, isAdminUser],
   );
   const scopedCatalogRows = allowedSubjectCodes
     ? catalogRows.filter((row) => materialSubjectIds(row).some((subjectId) => allowedSubjectCodes.has(subjectId)))
@@ -702,7 +705,10 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   const materialRows = allMaterialRows.slice(0, displayLimit);
   const materials = materialRows.map(fromConvexDocument);
   const rawMaterialSubjects = courseCatalog ?? [];
-  const materialSubjects = useMemo(() => filterSubjectsForUserCareers(rawMaterialSubjects, currentUser, isAdminUser), [rawMaterialSubjects, currentUser, isAdminUser]);
+  const materialSubjects = useMemo(
+    () => filterSubjectsForUserCareers(rawMaterialSubjects, currentUser, isAdminUser || canSeeAllCareerSubjects),
+    [canSeeAllCareerSubjects, rawMaterialSubjects, currentUser, isAdminUser],
+  );
   const displayedFacets = useMemo(() => buildFacetStatsFromRows(scopedCatalogRows, facetArgs), [scopedCatalogRows, facetArgs]);
   const filteredTotal = displayedFacets?.filteredTotal ?? 0;
   const hasMoreMaterials = displayLimit < allMaterialRows.length;
@@ -1462,11 +1468,15 @@ function filterSubjectsForUserCareers(subjectList, user, canSeeAll = false) {
 }
 
 function getSelectedSubjectCodeSet(user, canSeeAll = false) {
-  if (canSeeAll || user?.userType === "admin") return null;
+  if (canSeeAll || user?.userType === "admin" || canUserSeeAllCareerSubjects(user)) return null;
   const selectedSubjectCodes = Array.isArray(user?.selectedSubjectCodes)
     ? user.selectedSubjectCodes.filter(Boolean)
     : [];
   return selectedSubjectCodes.length ? new Set(selectedSubjectCodes) : null;
+}
+
+function canUserSeeAllCareerSubjects(user) {
+  return ["pro", "excellence"].includes(String(user?.plan ?? "").toLowerCase());
 }
 
 function sameStringSetLocal(left = [], right = []) {
@@ -1502,7 +1512,7 @@ function buildMaterialWatermark(user) {
   return [identity || "Usuario Synapse", date].join(" · ");
 }
 
-function ConvexFlowSection({ currentUser, canLoadMaterials = true, onOpenMaterialInLibrary }) {
+function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCareerSubjects = false, onOpenMaterialInLibrary }) {
   const [career, setCareer] = useState(() => currentUser.careers?.[0] ?? "sistemas");
   const args = useMemo(() => ({ career, userEmail: currentUser.email }), [career, currentUser.email]);
   const access = useQuery(api.users.getAccess, { email: currentUser.email });
@@ -1511,8 +1521,8 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, onOpenMateria
   const catalogScopeKey = useMemo(() => [
     currentUser.email,
     (currentUser.careers ?? []).filter(Boolean).sort().join(","),
-    (currentUser.selectedSubjectCodes ?? []).filter(Boolean).sort().join(","),
-  ].join("::"), [currentUser.careers, currentUser.email, currentUser.selectedSubjectCodes]);
+    canSeeAllCareerSubjects ? "__all__" : (currentUser.selectedSubjectCodes ?? []).filter(Boolean).sort().join(","),
+  ].join("::"), [canSeeAllCareerSubjects, currentUser.careers, currentUser.email, currentUser.selectedSubjectCodes]);
   const materialCatalog = useMaterialCatalog({ userEmail: currentUser.email, scopeKey: catalogScopeKey, serverRevision: libraryRevision, enabled: canLoadMaterials });
   const { data: flowData, isFromCache } = useCachedConvexQuery(api.flows.getFlow, args, "flows.getFlow", {
     initialValue: null,
@@ -1525,7 +1535,7 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, onOpenMateria
   const setStatus = useMutation(api.flows.setStatus);
   const [optimisticStatuses, setOptimisticStatuses] = useState({});
   const isAdminUser = access?.userType === "admin" || (access === undefined && ADMIN_EMAIL_FALLBACKS.includes(currentUser.email.toLowerCase()));
-  const allowedSubjectCodes = getSelectedSubjectCodeSet(currentUser, isAdminUser);
+  const allowedSubjectCodes = getSelectedSubjectCodeSet(currentUser, isAdminUser || canSeeAllCareerSubjects);
   const catalogRows = canLoadMaterials ? materialCatalog.results ?? [] : [];
   const flowMaterialRows = useMemo(() => {
     const scopedRows = allowedSubjectCodes

@@ -7,6 +7,9 @@ const CAREER_LABELS = {
   sistemas: "Sistemas",
   civil: "Civil",
   mecanica: "Mecanica",
+  electrica: "Electrica",
+  produccion: "Produccion",
+  quimica: "Quimica",
 };
 
 export function UsersView({ adminEmail }) {

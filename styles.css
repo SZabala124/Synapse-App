@@ -7076,10 +7076,22 @@ html[data-theme="dark"] .profile-subject-edit-button:focus-visible {
   width: min(100% - 24px, 460px);
 }
 
-.auth-google,
-.auth-mode {
-  width: 100%;
+.auth-actions-stack {
+  display: grid;
+  gap: 10px;
   margin-top: 12px;
+}
+
+.auth-google,
+.auth-mode,
+.auth-forgot {
+  width: 100%;
+  margin-top: 0;
+}
+
+.auth-notice {
+  color: #8fd0a8;
+  font-weight: 800;
 }
 
 .auth-error {

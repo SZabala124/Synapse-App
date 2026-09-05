@@ -174,6 +174,42 @@ export const ensureProfile = mutation({
   },
 });
 
+export const recoverLocalAccess = mutation({
+  args: {
+    email: v.string(),
+    nationalId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const nationalId = normalizeNationalIdValue(args.nationalId);
+    const user = await findBestUserByEmail(ctx, email);
+
+    if (!user) {
+      throw new Error("No encontramos una cuenta con ese correo.");
+    }
+
+    if (!nationalId || normalizeNationalIdValue(user.nationalId) !== nationalId) {
+      throw new Error("La cédula no coincide con la cuenta registrada.");
+    }
+
+    const resolved = withResolvedUserType(user);
+    return {
+      email: resolved.email ?? email,
+      firstName: resolved.firstName ?? "",
+      lastName: resolved.lastName ?? "",
+      nationalId: resolved.nationalId ?? "",
+      phone: resolved.phone ?? "",
+      careers: resolved.careers ?? [],
+      userType: resolved.userType,
+      plan: resolved.plan,
+      selectedSubjectCodes: sanitizeSubjectCodes(resolved.selectedSubjectCodes),
+      subjectSelectionModalSeen: Boolean(resolved.subjectSelectionModalSeen),
+      createdAt: resolved._creationTime ?? resolved.createdAt ?? 0,
+      updatedAt: resolved.updatedAt ?? resolved._creationTime ?? 0,
+    };
+  },
+});
+
 export const saveSubjectSelection = mutation({
   args: {
     email: v.string(),
@@ -647,6 +683,10 @@ function seedUserType(email) {
 
 function normalizeEmail(email) {
   return email.trim().toLowerCase();
+}
+
+function normalizeNationalIdValue(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 9);
 }
 
 function compactProfilePatch(args) {

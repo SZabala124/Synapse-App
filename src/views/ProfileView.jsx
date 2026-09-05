@@ -5,6 +5,9 @@ const CAREER_OPTIONS = [
   { id: "sistemas", name: "Ingeniería de Sistemas" },
   { id: "civil", name: "Ingeniería Civil" },
   { id: "mecanica", name: "Ingeniería Mecánica" },
+  { id: "electrica", name: "Ingeniería Eléctrica" },
+  { id: "produccion", name: "Ingeniería de Producción" },
+  { id: "quimica", name: "Ingeniería Química" },
 ];
 
 export function ProfileView({ currentUser, profile, subjectSelection, pendingPayment, onOpenSubjectSelection, onSave, onSignOut }) {

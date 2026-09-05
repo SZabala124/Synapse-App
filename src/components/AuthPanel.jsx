@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import logoUrl from "../../Synapse.svg";
 
 const CAREER_OPTIONS = [
   { id: "sistemas", name: "Ingeniería de Sistemas" },
   { id: "civil", name: "Ingeniería Civil" },
   { id: "mecanica", name: "Ingeniería Mecánica" },
+  { id: "electrica", name: "Ingeniería Eléctrica" },
+  { id: "produccion", name: "Ingeniería de Producción" },
+  { id: "quimica", name: "Ingeniería Química" },
 ];
 
-export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess }) {
+export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, convexEnabled = false }) {
   const [mode, setMode] = useState(initialMode);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [profileFields, setProfileFields] = useState({
     firstName: "",
@@ -17,6 +23,15 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess }) {
     nationalId: "",
     phone: "",
   });
+  const [authFields, setAuthFields] = useState({
+    email: "",
+    password: "",
+    confirmPassword: "",
+    resetNationalId: "",
+    resetPassword: "",
+    resetConfirmPassword: "",
+  });
+  const recoverLocalAccess = useMutation(api.users.recoverLocalAccess);
 
   useEffect(() => {
     setMode(initialMode);
@@ -31,11 +46,35 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess }) {
       setError("Las contraseñas no coinciden.");
       return;
     }
+    if (mode === "forgotPassword" && formData.get("resetPassword") !== formData.get("resetConfirmPassword")) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
     formData.set("flow", mode);
     formData.delete("confirmPassword");
     try {
       setSubmitting(true);
       const email = String(formData.get("email")).trim().toLowerCase();
+      if (mode === "forgotPassword") {
+        const nextPassword = String(formData.get("resetPassword"));
+        const nationalId = String(formData.get("resetNationalId"));
+        const recoveredProfile = convexEnabled
+          ? await recoverLocalAccess({ email, nationalId })
+          : null;
+        resetLocalPassword(email, nationalId, nextPassword, recoveredProfile);
+        setAuthFields((current) => ({
+          ...current,
+          email,
+          password: "",
+          confirmPassword: "",
+          resetNationalId: "",
+          resetPassword: "",
+          resetConfirmPassword: "",
+        }));
+        setMode("signIn");
+        setNotice("Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.");
+        return;
+      }
       const password = String(formData.get("password"));
       const user = mode === "signUp" ? createLocalAccount(email, password, readProfileForm(formData)) : signInLocalAccount(email, password);
       onAuthSuccess(user);
@@ -58,8 +97,12 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess }) {
           <img src={logoUrl} alt="" aria-hidden="true" />
           <span>Synapse Academia</span>
         </div>
-        <h1>{mode === "signIn" ? "Inicia sesión" : "Crea tu cuenta"}</h1>
-        <p>Accede con correo y contraseña. Google lo dejamos para una siguiente etapa.</p>
+        <h1>{mode === "signIn" ? "Inicia sesión" : mode === "signUp" ? "Crea tu cuenta" : "Recupera tu contraseña"}</h1>
+        <p>
+          {mode === "forgotPassword"
+            ? "Confirma tu correo y tu cédula para definir una contraseña nueva en este navegador."
+            : "Accede con correo y contraseña. Google lo dejamos para una siguiente etapa."}
+        </p>
 
         <form className="auth-form" onSubmit={handlePassword}>
           {mode === "signUp" && (
@@ -137,35 +180,126 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess }) {
           )}
           <label>
             Correo
-            <input name="email" type="email" placeholder="tu@email.com" required />
+            <input
+              name="email"
+              type="email"
+              placeholder="tu@email.com"
+              value={authFields.email}
+              onChange={(event) => updateAuthField("email", event.target.value)}
+              required
+            />
           </label>
-          <label>
-            Contraseña
-            <input name="password" type="password" minLength={8} placeholder="Mínimo 8 caracteres" required />
-          </label>
+
+          {mode !== "forgotPassword" && (
+            <label>
+              Contraseña
+              <input
+                name="password"
+                type="password"
+                minLength={8}
+                placeholder="Mínimo 8 caracteres"
+                value={authFields.password}
+                onChange={(event) => updateAuthField("password", event.target.value)}
+                required
+              />
+            </label>
+          )}
+
           {mode === "signUp" && (
             <label>
               Confirmar contraseña
-              <input name="confirmPassword" type="password" minLength={8} placeholder="Repite tu contraseña" required />
+              <input
+                name="confirmPassword"
+                type="password"
+                minLength={8}
+                placeholder="Repite tu contraseña"
+                value={authFields.confirmPassword}
+                onChange={(event) => updateAuthField("confirmPassword", event.target.value)}
+                required
+              />
             </label>
           )}
+
+          {mode === "forgotPassword" && (
+            <>
+              <label>
+                Cédula venezolana
+                <input
+                  name="resetNationalId"
+                  type="text"
+                  inputMode="numeric"
+                  value={authFields.resetNationalId}
+                  onChange={(event) => updateAuthField("resetNationalId", onlyDigits(event.target.value).slice(0, 9))}
+                  placeholder="12345678"
+                  autoComplete="off"
+                  maxLength={9}
+                  required
+                />
+              </label>
+              <label>
+                Nueva contraseña
+                <input
+                  name="resetPassword"
+                  type="password"
+                  minLength={8}
+                  placeholder="Mínimo 8 caracteres"
+                  value={authFields.resetPassword}
+                  onChange={(event) => updateAuthField("resetPassword", event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Confirmar nueva contraseña
+                <input
+                  name="resetConfirmPassword"
+                  type="password"
+                  minLength={8}
+                  placeholder="Repite tu nueva contraseña"
+                  value={authFields.resetConfirmPassword}
+                  onChange={(event) => updateAuthField("resetConfirmPassword", event.target.value)}
+                  required
+                />
+              </label>
+            </>
+          )}
+
           <button className="primary-action form-submit" type="submit" disabled={submitting}>
-            {submitting ? "Procesando..." : mode === "signIn" ? "Entrar" : "Registrarme"}
+            {submitting ? "Procesando..." : mode === "signIn" ? "Entrar" : mode === "signUp" ? "Registrarme" : "Actualizar contraseña"}
           </button>
         </form>
 
-        <button
-          className="quiet-button auth-mode"
-          type="button"
-          disabled={submitting}
-          onClick={() => {
-            setError("");
-            setMode(mode === "signIn" ? "signUp" : "signIn");
-          }}
-        >
-          {mode === "signIn" ? "Crear cuenta con correo" : "Ya tengo cuenta"}
-        </button>
+        <div className="auth-actions-stack">
+          {mode === "signIn" && (
+            <button
+              className="quiet-button auth-forgot"
+              type="button"
+              disabled={submitting}
+              onClick={() => switchMode("forgotPassword")}
+            >
+              Olvidé mi contraseña
+            </button>
+          )}
+          <button
+            className="quiet-button auth-mode"
+            type="button"
+            disabled={submitting}
+            onClick={() => switchMode(mode === "signUp" ? "signIn" : "signUp")}
+          >
+            {mode === "signUp" ? "Ya tengo cuenta" : "Crear cuenta con correo"}
+          </button>
+          {mode === "forgotPassword" && (
+            <button
+              className="quiet-button auth-mode"
+              type="button"
+              disabled={submitting}
+              onClick={() => switchMode("signIn")}
+            >
+              Volver al inicio de sesión
+            </button>
+          )}
+        </div>
 
+        {notice && <p className="auth-notice">{notice}</p>}
         {error && <p className="auth-error">{error}</p>}
       </section>
     </main>
@@ -173,6 +307,16 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess }) {
 
   function updateProfileField(field, value) {
     setProfileFields((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateAuthField(field, value) {
+    setAuthFields((current) => ({ ...current, [field]: value }));
+  }
+
+  function switchMode(nextMode) {
+    setError("");
+    setNotice("");
+    setMode(nextMode);
   }
 }
 
@@ -209,6 +353,32 @@ function signInLocalAccount(email, password) {
     throw new Error("Correo o contraseña incorrectos.");
   }
   return publicUser(user);
+}
+
+function resetLocalPassword(email, nationalId, nextPassword, recoveredProfile = null) {
+  const normalizedEmail = String(email ?? "").trim().toLowerCase();
+  if (!normalizedEmail) throw new Error("Escribe un correo válido.");
+  if (nextPassword.length < 8) throw new Error("La contraseña debe tener mínimo 8 caracteres.");
+  const normalizedNationalId = normalizeNationalId(nationalId);
+  if (!/^\d{6,9}$/.test(normalizedNationalId)) {
+    throw new Error("La cédula debe ser venezolana y contener entre 6 y 9 números.");
+  }
+
+  const users = readUsers();
+  const localUser = users[normalizedEmail];
+  const baseUser = localUser ?? recoveredProfile;
+  if (!baseUser) throw new Error("No encontramos una cuenta con ese correo.");
+  if (normalizeNationalId(baseUser.nationalId) !== normalizedNationalId) {
+    throw new Error("La cédula no coincide con la cuenta registrada.");
+  }
+
+  users[normalizedEmail] = {
+    ...baseUser,
+    email: normalizedEmail,
+    password: nextPassword,
+    updatedAt: Date.now(),
+  };
+  writeUsers(users);
 }
 
 function readProfileForm(formData) {

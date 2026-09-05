@@ -3,6 +3,28 @@ import { createPortal } from "react-dom";
 import { RatingSummary } from "./MaterialsView";
 
 const statusOptions = ["Cursada", "En curso", "Planificada", "Pendiente"];
+const additionalRequirementsByCareer = {
+  sistemas: [
+    { code: "BPTDI01", name: "Servicio comunitario", note: "FGTDI01 y 90 creditos requeridos" },
+    { code: "FPTIS04", name: "Defensa de trabajo de grado", note: "FPTSP22 requerido" },
+  ],
+  mecanica: [
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "FPTIM04", name: "Defensa de trabajo de grado", note: "FPTSP22 requerido" },
+  ],
+  electrica: [
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "FPTIE23", name: "Defensa de trabajo de grado", note: "FPTSP22 requerido" },
+  ],
+  produccion: [
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "FPTIP04", name: "Defensa TG", note: "FPTSP22 requerido" },
+  ],
+  quimica: [
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "FPTIQ04", name: "Defensa TG", note: "FPTSP22 requerido" },
+  ],
+};
 
 export function FlowView({
   flowPeriods,
@@ -31,6 +53,10 @@ export function FlowView({
   const percent = totalCourses ? Math.round((completed.length / totalCourses) * 100) : 0;
   const careerOptions = careers.length ? careers : [{ id: selectedCareer, name: flowProgram?.name ?? "Ingenieria de Sistemas" }];
   const canSwitchCareer = careerOptions.length > 1;
+  const additionalRequirements = additionalRequirementsByCareer[selectedCareer] ?? [
+    { code: "BPTHE71", name: "Servicio comunitario", note: "90 creditos requeridos" },
+    { code: "FPTSP22", name: "Defensa de trabajo de grado", note: "120 creditos requeridos" },
+  ];
 
   useEffect(() => {
     const board = boardRef.current;
@@ -258,8 +284,12 @@ export function FlowView({
           <section className="flow-legend-box">
             <h3>Requisitos adicionales</h3>
             <div className="additional-requirements">
-              <article className="requirement-card"><strong>Servicio comunitario</strong><span>90 creditos requeridos</span></article>
-              <article className="requirement-card"><strong>Defensa de trabajo de grado</strong><span>120 creditos requeridos</span></article>
+              {additionalRequirements.map((requirement) => (
+                <article className="requirement-card" key={requirement.code}>
+                  <strong>{requirement.code} · {requirement.name}</strong>
+                  <span>{requirement.note}</span>
+                </article>
+              ))}
             </div>
           </section>
           <section className="flow-legend-box">
