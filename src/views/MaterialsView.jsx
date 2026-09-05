@@ -1022,7 +1022,10 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
   const [pdfBlob, setPdfBlob] = useState(null);
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useState(() => {
+    if (typeof window === "undefined") return 100;
+    return window.matchMedia?.("(max-width: 680px)").matches ? 60 : 100;
+  });
   const [privacyShield, setPrivacyShield] = useState(false);
   const [selectedRating, setSelectedRating] = useState(material.userRating ?? 0);
   const [ratingSummary, setRatingSummary] = useState({
@@ -1159,7 +1162,7 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
   }, [material.imageStoragePath]);
 
   function updateZoom(nextZoom) {
-    const clampedZoom = Math.min(200, Math.max(60, nextZoom));
+    const clampedZoom = Math.min(200, Math.max(50, nextZoom));
     const frame = frameRef.current;
     if (frame && clampedZoom !== zoom) {
       pendingScrollRef.current = {
@@ -1192,7 +1195,7 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
   }, [zoom]);
 
   return (
-    <div className="course-detail-overlay is-visible" role="dialog" aria-modal="true">
+    <div className="course-detail-overlay material-viewer-overlay is-visible" role="dialog" aria-modal="true">
       <section className="course-detail-modal material-viewer-modal">
         <header>
           <div>

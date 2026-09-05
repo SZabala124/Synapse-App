@@ -394,8 +394,8 @@ function CourseModal({ course, status, allCourses, materials, onClose, onOpenMat
   }
 
   return (
-    <div className="course-detail-overlay is-visible" role="dialog" aria-modal="true">
-        <section className="course-detail-modal">
+    <div className="course-detail-overlay course-info-overlay is-visible" role="dialog" aria-modal="true">
+        <section className="course-detail-modal course-info-modal">
           <header>
             <div>
               <h2>{course.name}</h2>
