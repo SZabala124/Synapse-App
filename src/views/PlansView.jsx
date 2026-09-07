@@ -15,6 +15,7 @@ const plans = [
     id: "free",
     name: "Gratis",
     monthly: 0,
+    bimonthly: 0,
     quarterly: 0,
     badge: "Para empezar",
     description: "Acceso controlado para probar Synapse sin pagar.",
@@ -29,11 +30,12 @@ const plans = [
     id: "pro",
     name: "Pro",
     monthly: 3,
-    quarterly: 6,
-    badge: "Trimestral con 1 mes de ahorro",
+    bimonthly: 5,
+    quarterly: 7,
+    badge: "Trimestral: ahorra 22,22 %",
     description: "Para estudiar con materiales Pro sin fricción.",
     features: [
-      "Materiales gratis y Pro sin limites",
+      "Materiales gratis y Pro sin límites",
       "Todas las materias de tu carrera",
       "Lista completa de herramientas de tu carrera",
       "3 herramientas al mes",
@@ -44,14 +46,15 @@ const plans = [
     id: "excellence",
     name: "Excellence",
     monthly: 4,
-    quarterly: 8,
-    badge: "Trimestral con 1 mes de ahorro",
+    bimonthly: 6.5,
+    quarterly: 9,
+    badge: "Trimestral: ahorra 25 %",
     description: "Todo Synapse desbloqueado para estudiar a fondo.",
     features: [
       "Todo lo incluido en Pro",
       "Herramientas ilimitadas de tu carrera",
-      "Sin limites mensuales de uso academico",
-      "Ideal para parciales, guias y practica intensiva",
+      "Sin límites mensuales de uso académico",
+      "Ideal para parciales, guías y práctica intensiva",
     ],
   },
 ];
@@ -59,6 +62,7 @@ const plans = [
 export function PlansView({ currentUser, currentPlan = "free", isAdmin = false, pendingPayment = null }) {
   const [paymentDraft, setPaymentDraft] = useState(null);
   const normalizedPlan = isAdmin ? "admin" : currentPlan;
+  const billingOptions = useQuery(api.payments.billingOptions, isAdmin ? "skip" : { userEmail: currentUser.email });
 
   return (
     <section className="workspace plans-workspace">
@@ -66,12 +70,12 @@ export function PlansView({ currentUser, currentPlan = "free", isAdmin = false, 
         <div className="materials-heading-copy">
           <p className="eyebrow">Planes Synapse</p>
           <h1>Escoge cómo quieres estudiar</h1>
-          <p>Completa el pago movil y un administrador verificara la transferencia para activar tu plan.</p>
+          <p>Completa el pago móvil y un administrador verificará la transferencia para activar tu plan.</p>
         </div>
         <div className="plans-current-card">
           <span>Plan actual</span>
           <strong>{isAdmin ? "Admin" : planLabel(currentPlan)}</strong>
-          {pendingPayment && <small>Pago pendiente de verificacion</small>}
+          {pendingPayment && <small>Pago pendiente de verificación</small>}
         </div>
       </div>
 
@@ -90,6 +94,11 @@ export function PlansView({ currentUser, currentPlan = "free", isAdmin = false, 
                 <small>/ mes</small>
               </div>
               <div>
+                <span>Bimensual</span>
+                <strong>{formatUsd(plan.bimonthly)}</strong>
+                <small>/ 2 meses</small>
+              </div>
+              <div>
                 <span>Trimestral</span>
                 <strong>{formatUsd(plan.quarterly)}</strong>
                 <small>/ 3 meses</small>
@@ -99,29 +108,19 @@ export function PlansView({ currentUser, currentPlan = "free", isAdmin = false, 
               {plan.features.map((feature) => <li key={feature}>{feature}</li>)}
             </ul>
             <div className="plan-action-group">
-              {plan.id === "free" || normalizedPlan === plan.id ? (
+              {plan.id === "free" ? (
                 <button className="primary-action plan-action" type="button" disabled>
                   {normalizedPlan === plan.id ? "Plan activo" : "Incluido"}
                 </button>
               ) : (
-                <>
-                  <button
-                    className="secondary-action plan-pay-action"
-                    type="button"
-                    disabled={isAdmin || Boolean(pendingPayment)}
-                    onClick={() => setPaymentDraft({ plan, billingPeriod: "monthly", amountUsd: plan.monthly })}
-                  >
-                    Pagar mensual
-                  </button>
-                  <button
-                    className="primary-action plan-pay-action"
-                    type="button"
-                    disabled={isAdmin || Boolean(pendingPayment)}
-                    onClick={() => setPaymentDraft({ plan, billingPeriod: "quarterly", amountUsd: plan.quarterly })}
-                  >
-                    Pagar trimestral
-                  </button>
-                </>
+                ["monthly", "bimonthly", "quarterly"].map((period) => {
+                  const option = billingOptions?.[plan.id]?.[period];
+                  return <button key={period} className={period === "quarterly" ? "primary-action plan-pay-action" : period === "bimonthly" ? "secondary-action bimonthly-action plan-pay-action" : "secondary-action plan-pay-action"}
+                    type="button" disabled={isAdmin || Boolean(pendingPayment) || !option}
+                    onClick={() => setPaymentDraft({ plan, billingPeriod: period, ...option })}>
+                    {option?.basePaymentId ? `Ampliar a ${periodLabel(period)} · ${formatUsd(option.amountUsd)}` : `Pagar ${periodLabel(period)}`}
+                  </button>;
+                })
               )}
             </div>
           </article>
@@ -132,8 +131,8 @@ export function PlansView({ currentUser, currentPlan = "free", isAdmin = false, 
         <section className="payment-pending-banner">
           <div>
             <p className="eyebrow">Pago pendiente</p>
-            <h2>{planLabel(pendingPayment.plan)} {pendingPayment.billingPeriod === "quarterly" ? "trimestral" : "mensual"}</h2>
-            <p>Tu reporte de pago movil fue enviado. Cuando el admin lo apruebe, tu plan se activara automaticamente.</p>
+            <h2>{planLabel(pendingPayment.plan)} {periodLabel(pendingPayment.billingPeriod)}</h2>
+            <p>Tu reporte de pago móvil fue enviado. Cuando el admin lo apruebe, tu plan se activará automáticamente.</p>
           </div>
           <strong>Bs {formatBs(pendingPayment.amountBs)}</strong>
         </section>
@@ -213,6 +212,7 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
         payerPhone: form.payerPhone,
         bankCode: form.bankCode,
         referenceLast4: form.referenceLast4,
+        basePaymentId: draft.basePaymentId,
       });
       setSuccess(true);
       window.setTimeout(() => {
@@ -227,12 +227,12 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
   }
 
   return (
-    <div className="course-detail-overlay is-visible" role="dialog" aria-modal="true">
+    <div className="course-detail-overlay payment-mobile-overlay is-visible" role="dialog" aria-modal="true">
       <section className="course-detail-modal payment-mobile-modal">
         <header>
           <div>
-            <p className="eyebrow">Pago movil</p>
-            <h2>{draft.plan.name} · {draft.billingPeriod === "quarterly" ? "Trimestral" : "Mensual"}</h2>
+            <p className="eyebrow">Pago móvil</p>
+            <h2>{draft.plan.name} · {periodLabel(draft.billingPeriod)}</h2>
             <span>{formatUsd(draft.amountUsd)} {expectedBs ? `· Bs ${formatBs(expectedBs)}` : ""}</span>
           </div>
           <button className="quiet-button" type="button" onClick={onClose} disabled={busy}>Cerrar</button>
@@ -241,7 +241,7 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
         {success ? (
           <div className="payment-success-panel">
             <strong>Pago reportado con exito</strong>
-            <p>Tu solicitud quedo pendiente de verificacion. Te llevaremos al perfil.</p>
+            <p>Tu solicitud quedó pendiente de verificación. Te llevaremos al perfil.</p>
           </div>
         ) : (
           <div className="payment-mobile-body">
@@ -250,19 +250,23 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
                 <div className="payment-rate-card">
                   <span>Monto a pagar</span>
                   <strong>{formatUsd(draft.amountUsd)}</strong>
+                  {draft.basePaymentId && <p>
+                    {periodLabel(draft.billingPeriod)} {formatUsd(draft.plan[draft.billingPeriod])} − abonado {formatUsd(draft.creditedUsd)}.
+                    {" "}Vencimiento: {new Date(draft.subscriptionEndAt).toLocaleDateString("es-VE")}.
+                  </p>}
                   {rateInfo.status === "loading" && <p>Consultando tasa BCV...</p>}
                   {rateInfo.status === "ready" && (
                     <p>BCV: Bs {formatBs(rateInfo.rate)} · Total: <b>Bs {formatBs(expectedBs)}</b></p>
                   )}
                   {rateInfo.status === "error" && (
-                    <p>No se pudo consultar la tasa automaticamente. Puedes confirmar el monto en bolivares manualmente.</p>
+                    <p>No se pudo consultar la tasa automáticamente. Puedes confirmar el monto en bolívares manualmente.</p>
                   )}
                 </div>
                 <div className="payment-transfer-card">
-                  <p className="payment-section-title">Datos para pago movil</p>
+                    <p className="payment-section-title">Datos para pago móvil</p>
                   <dl>
                     <div><dt>C.I.</dt><dd>{PAYMENT_TARGET.nationalId}</dd></div>
-                    <div><dt>Telefono</dt><dd>{PAYMENT_TARGET.displayPhone}</dd></div>
+                    <div><dt>Teléfono</dt><dd>{PAYMENT_TARGET.displayPhone}</dd></div>
                     <div><dt>Banco</dt><dd>{PAYMENT_TARGET.bank}</dd></div>
                   </dl>
                 </div>
@@ -285,7 +289,7 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
                   />
                 </label>
                 <label>
-                  Telefono emisor
+                  Teléfono emisor
                   <input
                     value={form.payerPhone}
                     inputMode="numeric"
@@ -304,7 +308,7 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
                   />
                 </label>
                 <label>
-                  Ultimos 4 digitos de la referencia
+                  Últimos 4 dígitos de la referencia
                   <input
                     value={form.referenceLast4}
                     inputMode="numeric"
@@ -330,10 +334,17 @@ function PaymentMobileModal({ currentUser, draft, onClose }) {
 
 function BankSelect({ banks, value, onChange }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const selected = banks.find((bank) => bank.code === value) ?? banks[0] ?? { code: value, label: "Selecciona un banco" };
+  const filteredBanks = useMemo(() => {
+    const query = normalizeBankSearch(search);
+    if (!query) return banks;
+    return banks.filter((bank) => normalizeBankSearch(`${bank.label} ${bank.code}`).includes(query));
+  }, [banks, search]);
 
   function selectBank(bankCode) {
     onChange?.(bankCode);
+    setSearch("");
     setOpen(false);
   }
 
@@ -345,7 +356,10 @@ function BankSelect({ banks, value, onChange }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Seleccionar banco emisor"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setSearch("");
+          setOpen((current) => !current);
+        }}
         onBlur={(event) => {
           if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setOpen(false);
         }}
@@ -355,7 +369,19 @@ function BankSelect({ banks, value, onChange }) {
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label="Bancos venezolanos">
-          {banks.map((bank) => (
+          <div className="custom-select-search" role="presentation">
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar banco..."
+              aria-label="Buscar banco"
+              autoFocus
+              onClick={(event) => event.stopPropagation()}
+            />
+          </div>
+          <div className="custom-select-options">
+          {filteredBanks.map((bank) => (
             <button
               className={bank.code === selected?.code ? "custom-select-option is-selected" : "custom-select-option"}
               type="button"
@@ -368,10 +394,20 @@ function BankSelect({ banks, value, onChange }) {
               <span className="custom-select-label">{bank.label}</span>
             </button>
           ))}
+          {filteredBanks.length === 0 && <div className="custom-select-empty">No hay bancos con ese nombre o código.</div>}
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+function normalizeBankSearch(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function updatePaymentField(setForm, field, value) {
@@ -380,9 +416,9 @@ function updatePaymentField(setForm, field, value) {
 
 function validatePaymentForm(form) {
   if (!/^\d+([.,]\d{1,2})?$/.test(form.amountBs.trim())) return "El monto debe ser numerico y puede tener hasta 2 decimales.";
-  if (!/^0(2\d{2}|4(12|14|16|24|26))\d{7}$/.test(form.payerPhone.trim())) return "El telefono debe ser venezolano y tener 11 digitos.";
+  if (!/^0(2\d{2}|4(12|14|16|24|26))\d{7}$/.test(form.payerPhone.trim())) return "El teléfono debe ser venezolano y tener 11 dígitos.";
   if (!form.bankCode) return "Selecciona el banco emisor.";
-  if (!/^\d{4}$/.test(form.referenceLast4.trim())) return "La referencia debe tener exactamente 4 digitos.";
+  if (!/^\d{4}$/.test(form.referenceLast4.trim())) return "La referencia debe tener exactamente 4 dígitos.";
   return "";
 }
 
@@ -396,6 +432,10 @@ function roundMoney(value) {
 
 function formatUsd(value) {
   return value ? `$${value}` : "$0";
+}
+
+function periodLabel(period) {
+  return period === "bimonthly" ? "bimensual" : period === "quarterly" ? "trimestral" : "mensual";
 }
 
 function formatBs(value) {

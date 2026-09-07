@@ -5,7 +5,7 @@ export function LandingView() {
         <div className="hero-copy">
           <h1>Synapse Academia</h1>
           <p className="hero-text">
-            Un escritorio universitario premium para curar materiales y visualizar el avance academico con disciplina
+            Un escritorio universitario premium para curar materiales y visualizar el avance académico con disciplina
             profesional.
           </p>
           <div className="hero-actions">
@@ -17,7 +17,7 @@ export function LandingView() {
 
       <section className="section-band intro-grid">
         <article>
-          <h2>Planificacion serena para semanas exigentes.</h2>
+          <h2>Planificación serena para semanas exigentes.</h2>
           <p>
             La app organiza materias y recursos alrededor de decisiones concretas: que estudiar, que material guardar y
             como avanzar en el flujograma.
@@ -29,12 +29,12 @@ export function LandingView() {
         <a href="#career">
           <span>01</span>
           <strong>Flujograma</strong>
-          <small>Trimestres o semestres, creditos, estado y notas.</small>
+          <small>Trimestres o semestres, créditos, estado y notas.</small>
         </a>
         <a href="#materials">
           <span>02</span>
           <strong>Materiales</strong>
-          <small>PDF, presentaciones, videos, guias y resumenes curados.</small>
+          <small>PDF, presentaciones, videos, guías y resúmenes curados.</small>
         </a>
       </section>
     </>

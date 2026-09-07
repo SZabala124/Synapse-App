@@ -24,7 +24,7 @@ export async function removeMaterialCatalog(scopeKey) {
 }
 
 function openCatalogDb() {
-  if (!("indexedDB" in window)) return Promise.reject(new Error("IndexedDB no esta disponible."));
+  if (!("indexedDB" in window)) return Promise.reject(new Error("IndexedDB no está disponible."));
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
@@ -37,7 +37,7 @@ function openCatalogDb() {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error("La base local de materiales esta bloqueada por otra pestana."));
+    request.onblocked = () => reject(new Error("La base local de materiales está bloqueada por otra pestaña."));
   });
 
   return dbPromise;

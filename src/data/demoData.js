@@ -1,7 +1,7 @@
 export const subjects = [
-  { id: "sub-optimizacion", name: "Optimizacion II", term: "Trimestre 9", credits: 4, status: "Cursando" },
-  { id: "sub-software", name: "Ingenieria de Software", term: "Trimestre 9", credits: 3, status: "Cursando" },
-  { id: "sub-numerico", name: "Calculo Numerico", term: "Trimestre 9", credits: 4, status: "Cursando" },
+  { id: "sub-optimizacion", name: "Optimización II", term: "Trimestre 9", credits: 4, status: "Cursando" },
+  { id: "sub-software", name: "Ingeniería de Software", term: "Trimestre 9", credits: 3, status: "Cursando" },
+  { id: "sub-numerico", name: "Cálculo Numérico", term: "Trimestre 9", credits: 4, status: "Cursando" },
   { id: "sub-operativos", name: "Sistemas Operativos", term: "Trimestre 8", credits: 4, status: "Aprobada" },
   { id: "sub-estadistica", name: "Estadistica II", term: "Trimestre 8", credits: 3, status: "Aprobada" },
   { id: "sub-arquitectura", name: "Arquitectura de Software", term: "Trimestre 10", credits: 3, status: "Planificada" },
@@ -13,9 +13,9 @@ export const activities = [
 ];
 
 export const materials = [
-  { id: "mat-simplex", title: "Guia premium de dualidad y sensibilidad", subject: "sub-optimizacion", format: "PDF", source: "Biblioteca/Optimizacion/dualidad-sensibilidad.pdf", level: "Pro", saved: true },
+  { id: "mat-simplex", title: "Guía premium de dualidad y sensibilidad", subject: "sub-optimizacion", format: "PDF", source: "Biblioteca/Optimizacion/dualidad-sensibilidad.pdf", level: "Pro", saved: true },
   { id: "mat-sprint", title: "Presentacion: Calidad del sprint y metricas", subject: "sub-software", format: "Presentacion", source: "Drive local/Software/calidad-sprint.pptx", level: "Avanzado", saved: true },
-  { id: "mat-jacobi", title: "Video clase: Metodos iterativos", subject: "sub-numerico", format: "Video", source: "https://universidad.local/videos/metodos-iterativos", level: "Pro", saved: false },
+  { id: "mat-jacobi", title: "Video clase: Métodos iterativos", subject: "sub-numerico", format: "Video", source: "https://universidad.local/videos/metodos-iterativos", level: "Pro", saved: false },
   { id: "mat-os", title: "Resumen ejecutivo: Planificacion de procesos", subject: "sub-operativos", format: "Resumen", source: "Apuntes/Sistemas Operativos/procesos.md", level: "Gratis", saved: false },
   { id: "mat-regresion", title: "Set de ejercicios: regresion multiple", subject: "sub-estadistica", format: "Guia", source: "Biblioteca/Estadistica/regresion-multiple.xlsx", level: "Avanzado", saved: true },
   { id: "mat-patterns", title: "Catalogo de patrones de arquitectura", subject: "sub-arquitectura", format: "PDF", source: "Biblioteca/Arquitectura/patrones-arquitectura.pdf", level: "Pro", saved: false },
@@ -23,23 +23,23 @@ export const materials = [
 
 export const flowPeriods = [
   [
-    { code: "FBTMM01", name: "Matematica Basica", status: "Cursada", credits: 3 },
-    { code: "FBTPS03", name: "Introduccion a la Ingenieria", status: "Cursada", credits: 3 },
+    { code: "FBTMM01", name: "Matemática Básica", status: "Cursada", credits: 3 },
+    { code: "FBTPS03", name: "Introducción a la Ingeniería", status: "Cursada", credits: 3 },
     { code: "FBTPS04", name: "Pensamiento Computacional", status: "Pendiente", credits: 3 },
   ],
   [
-    { code: "BPTM01", name: "Matematicas I", status: "Cursada", credits: 3, prereq: "FBTMM01" },
+    { code: "BPTM01", name: "Matemáticas I", status: "Cursada", credits: 3, prereq: "FBTMM01" },
     { code: "BPTPI07", name: "Diseno asistido por computador", status: "Pendiente", credits: 3 },
-    { code: "BPTQI21", name: "Quimica General", status: "Pendiente", credits: 3, prereq: "FBTMM01" },
+    { code: "BPTQI21", name: "Química General", status: "Pendiente", credits: 3, prereq: "FBTMM01" },
   ],
   [
-    { code: "BPTM02", name: "Matematicas II", status: "Pendiente", credits: 3, prereq: "BPTM01" },
-    { code: "BPTFI01", name: "Fisica I", status: "Pendiente", credits: 3, prereq: "BPTM01" },
-    { code: "BPTPS05", name: "Algoritmos y Programacion", status: "Pendiente", credits: 3, prereq: "FBTPS04" },
+    { code: "BPTM02", name: "Matemáticas II", status: "Pendiente", credits: 3, prereq: "BPTM01" },
+    { code: "BPTFI01", name: "Física I", status: "Pendiente", credits: 3, prereq: "BPTM01" },
+    { code: "BPTPS05", name: "Algoritmos y Programación", status: "Pendiente", credits: 3, prereq: "FBTPS04" },
   ],
   [
-    { code: "BPTM03", name: "Matematicas III", status: "Pendiente", credits: 3, prereq: "BPTM02" },
-    { code: "BPTFI02", name: "Fisica II", status: "Pendiente", credits: 3, prereq: "BPTFI01 + BPTM02" },
+    { code: "BPTM03", name: "Matemáticas III", status: "Pendiente", credits: 3, prereq: "BPTM02" },
+    { code: "BPTFI02", name: "Física II", status: "Pendiente", credits: 3, prereq: "BPTFI01 + BPTM02" },
     { code: "BPTPS06", name: "Estructuras de Datos", status: "Pendiente", credits: 3, prereq: "BPTPS05" },
   ],
 ];

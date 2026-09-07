@@ -51,9 +51,9 @@ export function AlgebraToolModal({ onClose }) {
         <div className="truth-tool-layout algebra-tool-layout">
           <form className="truth-tool-form algebra-tool-form">
             <label>
-              Que vas a escribir
+              Qué vas a escribir
               <select value={mode} onChange={(event) => setMode(event.target.value)}>
-                <option value="auto">Detectar automaticamente</option>
+                <option value="auto">Detectar automáticamente</option>
                 <option value="distributive">Distributiva: a(b + c)</option>
                 <option value="binomial-product">Producto de binomios: (a + b)(c + d)</option>
                 <option value="square">Cuadrado de binomio: (a ± b)^2</option>
@@ -71,12 +71,12 @@ export function AlgebraToolModal({ onClose }) {
                 placeholder="Ej: (4x - 5)(4x - 2)"
               />
             </label>
-            <div className="truth-operator-row algebra-operator-row" aria-label="Simbolos algebraicos disponibles">
+            <div className="truth-operator-row algebra-operator-row" aria-label="Símbolos algebraicos disponibles">
               {["+", "-", "×", "^", "/", "(", ")", "[", "]", "{", "}", "x", "a", "b"].map((symbol) => (
                 <button type="button" key={symbol} onClick={() => insertAlgebraSymbol(symbol)}>{symbol}</button>
               ))}
             </div>
-            <p className="truth-tool-hint">Puedes escribir numeros enteros, decimales, fracciones, letras, signos, potencias y agrupadores.</p>
+            <p className="truth-tool-hint">Puedes escribir números enteros, decimales, fracciones, letras, signos, potencias y agrupadores.</p>
             <button className="secondary-action truth-clear-button" type="button" onClick={() => setExpression("")} disabled={!expression}>
               Borrar expresion
             </button>
@@ -147,7 +147,7 @@ function solveDistributive(expression) {
   if (!match) throw new Error("Para distributiva usa una forma como 3(x+4).");
   const factor = parseAlgebraTerm(match[1]);
   const insideTerms = parseLinearTerms(match[2]);
-  if (insideTerms.length !== 2) throw new Error("La distributiva acepta dos terminos dentro del parentesis.");
+  if (insideTerms.length !== 2) throw new Error("La distributiva acepta dos términos dentro del paréntesis.");
   const products = insideTerms.map((term) => multiplyTerms(factor, term));
   const simplified = simplifyPolynomial(products);
   return {
@@ -156,7 +156,7 @@ function solveDistributive(expression) {
     latexAnswer: `${termToLatex(factor)}(${linearTermsToLatex(insideTerms)})=${polynomialToLatex(simplified)}`,
     steps: [
       { title: "Identificamos la propiedad", lines: ["a(b+c)=ab+ac"] },
-      { title: "Multiplicamos el factor por cada termino", lines: [`${factorToLatex(factor)}\\cdot ${factorToLatex(insideTerms[0])}+${factorToLatex(factor)}\\cdot ${factorToLatex(insideTerms[1])}`] },
+      { title: "Multiplicamos el factor por cada término", lines: [`${factorToLatex(factor)}\\cdot ${factorToLatex(insideTerms[0])}+${factorToLatex(factor)}\\cdot ${factorToLatex(insideTerms[1])}`] },
       { title: "Calculamos y simplificamos", lines: [`${products.map(termToLatex).join("+").replaceAll("+-", "-")}=${polynomialToLatex(simplified)}`] },
     ],
   };
@@ -180,8 +180,8 @@ function solveBinomialProduct(expression) {
     latexAnswer: `(${linearTermsToLatex(leftTerms)})(${linearTermsToLatex(rightTerms)})=${polynomialToLatex(simplified)}`,
     steps: [
       { title: "Aplicamos la distributiva doble", lines: ["(a+b)(c+d)=ac+ad+bc+bd"] },
-      { title: "Multiplicamos termino por termino", lines: [`${factorToLatex(leftTerms[0])}\\cdot ${factorToLatex(rightTerms[0])}+${factorToLatex(leftTerms[0])}\\cdot ${factorToLatex(rightTerms[1])}+${factorToLatex(leftTerms[1])}\\cdot ${factorToLatex(rightTerms[0])}+${factorToLatex(leftTerms[1])}\\cdot ${factorToLatex(rightTerms[1])}`] },
-      { title: "Reducimos terminos semejantes", lines: [`${products.map(termToLatex).join("+").replaceAll("+-", "-")}=${polynomialToLatex(simplified)}`] },
+      { title: "Multiplicamos término por término", lines: [`${factorToLatex(leftTerms[0])}\\cdot ${factorToLatex(rightTerms[0])}+${factorToLatex(leftTerms[0])}\\cdot ${factorToLatex(rightTerms[1])}+${factorToLatex(leftTerms[1])}\\cdot ${factorToLatex(rightTerms[0])}+${factorToLatex(leftTerms[1])}\\cdot ${factorToLatex(rightTerms[1])}`] },
+      { title: "Reducimos términos semejantes", lines: [`${products.map(termToLatex).join("+").replaceAll("+-", "-")}=${polynomialToLatex(simplified)}`] },
     ],
   };
 }
@@ -226,7 +226,7 @@ function solveDifferenceSquares(expression) {
     latexAnswer: `(${linearTermsToLatex(leftTerms)})(${linearTermsToLatex(rightTerms)})=${polynomialToLatex(simplified)}`,
     steps: [
       { title: "Usamos el producto notable", lines: ["(A-B)(A+B)=A^2-B^2"] },
-      { title: "Elevamos cada termino al cuadrado", lines: [`(${termToLatex(leftTerms[0])})^2-(${termToLatex(absoluteTerm(leftTerms[1]))})^2`] },
+      { title: "Elevamos cada término al cuadrado", lines: [`(${termToLatex(leftTerms[0])})^2-(${termToLatex(absoluteTerm(leftTerms[1]))})^2`] },
       { title: "Resultado simplificado", lines: [polynomialToLatex(simplified)] },
     ],
   };
@@ -240,7 +240,7 @@ export function parseLinearTerms(expression) {
 export function parseAlgebraTerm(value) {
   const cleanValue = value.replace(/[{}\[\]]/g, "").replace(/\*/g, "");
   const match = cleanValue.match(/^([+-]?(?:(?:\d+(?:\.\d+)?)(?:\/\d+(?:\.\d+)?)?)?)([a-z]+)?(?:\^(\d+))?$/i);
-  if (!match) throw new Error(`No pude leer el termino "${value}".`);
+  if (!match) throw new Error(`No pude leer el término "${value}".`);
   const variable = match[2]?.toLowerCase() ?? "";
   const coefficient = parseCoefficient(match[1], variable);
   const power = variable ? Number(match[3] ?? 1) : 0;

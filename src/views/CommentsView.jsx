@@ -5,7 +5,7 @@ const REPORT_REASONS = [
   "Contenido ofensivo o irrespetuoso",
   "Spam o publicidad",
   "Acoso o ataque personal",
-  "Informacion falsa o confusa",
+  "Información falsa o confusa",
   "Pedido fuera de lugar",
   "Otro",
 ];
@@ -150,7 +150,7 @@ export function CommentsView({
           <p>Comparte mejoras para la app, pide nuevos materiales o responde ideas de otros estudiantes.</p>
         </div>
         <div className="comments-header-actions">
-          <div className="cache-note material-status-note">{remoteStatus}</div>
+          {remoteStatus && <div className="cache-note material-status-note">{remoteStatus}</div>}
           {canModerate && (
             <button className={reportsOpen ? "secondary-action comments-reports-button is-active" : "secondary-action comments-reports-button"} type="button" onClick={() => setReportsOpen((current) => !current)}>
               {reportsOpen ? "General" : "Denuncias"}
@@ -419,7 +419,7 @@ function DeleteCommentModal({ busy, error, hasReplies, onCancel, onConfirm }) {
 
 function CommentComposerModal({ body, busy, error, onBodyChange, onSubmit, onClose }) {
   return (
-    <div className="course-detail-overlay is-visible" role="dialog" aria-modal="true">
+    <div className="course-detail-overlay comment-modal-overlay is-visible" role="dialog" aria-modal="true">
       <section className="course-detail-modal comment-modal">
         <header>
           <div>

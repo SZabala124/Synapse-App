@@ -11,7 +11,7 @@ const pdfBlobCache = new Map();
 const imageBlobCache = new Map();
 
 export async function uploadMaterialPdf(file, ownerEmail) {
-  if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no esta configurado.");
+  if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no está configurado.");
   if (file.type !== "application/pdf") throw new Error("Por ahora solo se aceptan archivos PDF.");
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -33,7 +33,7 @@ export async function uploadMaterialPdf(file, ownerEmail) {
 
 export async function uploadMaterialImage(file, ownerEmail) {
   if (!file || file.size === 0) return null;
-  if (!isSupabaseConfigured) throw new Error("El almacenamiento de imagenes no esta configurado.");
+  if (!isSupabaseConfigured) throw new Error("El almacenamiento de imágenes no está configurado.");
   if (!file.type.startsWith("image/")) throw new Error("La portada debe ser una imagen.");
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -54,7 +54,7 @@ export async function uploadMaterialImage(file, ownerEmail) {
 export async function getMaterialPdfUrl(storagePath) {
   const cached = readSignedUrlCache(storagePath);
   if (cached) return cached;
-  if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no esta configurado.");
+  if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no está configurado.");
 
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, PDF_SIGNED_URL_TTL_SECONDS);
   if (error) throw normalizeStorageError(error);
@@ -136,7 +136,7 @@ function normalizeStorageError(error) {
 }
 
 async function createMaterialPdfSignedUrl(storagePath) {
-  if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no esta configurado.");
+  if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no está configurado.");
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, PDF_SIGNED_URL_TTL_SECONDS);
   if (error) throw normalizeStorageError(error);
   return data.signedUrl;
@@ -145,7 +145,7 @@ async function createMaterialPdfSignedUrl(storagePath) {
 async function createMaterialImageSignedUrl(storagePath) {
   const cached = readSignedUrlCache(storagePath, IMAGE_URL_CACHE_PREFIX);
   if (cached) return cached;
-  if (!isSupabaseConfigured) throw new Error("El almacenamiento de imagenes no esta configurado.");
+  if (!isSupabaseConfigured) throw new Error("El almacenamiento de imágenes no está configurado.");
 
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, IMAGE_SIGNED_URL_TTL_SECONDS);
   if (error) throw normalizeStorageError(error);

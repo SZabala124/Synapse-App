@@ -8,12 +8,14 @@
  * @module
  */
 
+import type * as academicTerms from "../academicTerms.js";
 import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
 import type * as documents from "../documents.js";
 import type * as flowData from "../flowData.js";
 import type * as flows from "../flows.js";
 import type * as http from "../http.js";
+import type * as paymentPricing from "../paymentPricing.js";
 import type * as payments from "../payments.js";
 import type * as users from "../users.js";
 
@@ -24,12 +26,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  academicTerms: typeof academicTerms;
   auth: typeof auth;
   comments: typeof comments;
   documents: typeof documents;
   flowData: typeof flowData;
   flows: typeof flows;
   http: typeof http;
+  paymentPricing: typeof paymentPricing;
   payments: typeof payments;
   users: typeof users;
 }>;

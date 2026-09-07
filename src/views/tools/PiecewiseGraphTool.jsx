@@ -102,7 +102,7 @@ export function PiecewiseGraphToolModal({ onClose }) {
       setCreationError("");
       setSegments((current) => [...current, nextSegment]);
     } catch (error) {
-      setCreationError(error?.message ?? "No se pudo agregar esa grafica.");
+      setCreationError(error?.message ?? "No se pudo agregar esa gráfica.");
     }
   }
 
@@ -111,7 +111,7 @@ export function PiecewiseGraphToolModal({ onClose }) {
       <section className="course-detail-modal truth-tool-modal piecewise-tool-modal">
         <header>
           <div>
-            <h2>Lectura de graficas por tramos</h2>
+            <h2>Lectura de gráficas por tramos</h2>
             <ToolMetaTags topic="Puntos abiertos, cerrados e inyectividad" />
           </div>
           <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
@@ -169,7 +169,7 @@ export function PiecewiseGraphToolModal({ onClose }) {
                   <button className="secondary-action" type="button" onClick={addSegment}>Agregar tramo</button>
                 </div>
                 {creationError && <p className="auth-error">{creationError}</p>}
-                <button className="secondary-action piecewise-clear-all-button" type="button" onClick={clearSegments}>Borrar todas las graficas</button>
+                <button className="secondary-action piecewise-clear-all-button" type="button" onClick={clearSegments}>Borrar todas las gráficas</button>
               </>
             )}
 
@@ -203,7 +203,7 @@ export function PiecewiseGraphToolModal({ onClose }) {
                 <label>Final<select value={equationDraft.end} onChange={(event) => updateEquationDraft("end", event.target.value)}><option value="closed">Cerrado</option><option value="open">Abierto</option></select></label>
               </div>
               <div className="piecewise-action-row">
-                <button className="secondary-action" type="button" onClick={addEquationSegment}>Agregar ecuacion a la grafica</button>
+                <button className="secondary-action" type="button" onClick={addEquationSegment}>Agregar ecuación a la gráfica</button>
               </div>
               {creationError && <p className="auth-error">{creationError}</p>}
               <div className="piecewise-equation-list">
@@ -239,10 +239,10 @@ export function PiecewiseGraphToolModal({ onClose }) {
                       <label>Inicio<select value={segment.start} onChange={(event) => updateSegment(segment.id, "start", event.target.value)}><option value="closed">Cerrado</option><option value="open">Abierto</option></select></label>
                       <label>Final<select value={segment.end} onChange={(event) => updateSegment(segment.id, "end", event.target.value)}><option value="closed">Cerrado</option><option value="open">Abierto</option></select></label>
                     </div>
-                    <button className="small-action" type="button" onClick={() => removeSegment(segment.id)}>Quitar esta grafica</button>
+                    <button className="small-action" type="button" onClick={() => removeSegment(segment.id)}>Quitar esta gráfica</button>
                   </fieldset>
                 ))}
-                <button className="secondary-action piecewise-clear-all-button" type="button" onClick={clearSegments}>Borrar todas las graficas</button>
+                <button className="secondary-action piecewise-clear-all-button" type="button" onClick={clearSegments}>Borrar todas las gráficas</button>
               </div>
             </section>
             )}
@@ -360,7 +360,7 @@ function PiecewiseGraph({ analysis }) {
 
   return (
     <div className="quadratic-graph-card piecewise-graph-card">
-      <div className="quadratic-graph-toolbar" aria-label="Controles de grafica">
+      <div className="quadratic-graph-toolbar" aria-label="Controles de gráfica">
         <button type="button" onClick={() => updateZoom(viewport.zoom * 1.22)}>+</button>
         <button type="button" onClick={() => updateZoom(viewport.zoom / 1.22)}>-</button>
         <button type="button" onClick={resetView}>Reset</button>
@@ -413,7 +413,7 @@ function analyzeSegments(rawSegments) {
     if (!segments.length) {
       return {
         segments: [],
-        equations: ["\\text{No hay tramos en la grafica.}"],
+        equations: ["\\text{No hay tramos en la gráfica.}"],
         domainText: "Dominio: vacio",
         rangeText: "Rango: vacio",
         injective: true,
@@ -425,7 +425,7 @@ function analyzeSegments(rawSegments) {
     }
     const verticalConflict = findVerticalConflict(segments);
     if (verticalConflict) {
-      throw new Error(`No es una funcion: en x=${formatNumber(verticalConflict.x)} aparecen y=${formatNumber(verticalConflict.y1)} y y=${formatNumber(verticalConflict.y2)}.`);
+      throw new Error(`No es una función: en x=${formatNumber(verticalConflict.x)} aparecen y=${formatNumber(verticalConflict.y1)} y y=${formatNumber(verticalConflict.y2)}.`);
     }
     const equations = segments.map(segmentEquation);
     const domainText = `Dominio: ${segments.map((segment) => intervalLatex(segment.x1, segment.x2, segment.start, segment.end)).join(" ∪ ")}`;
@@ -445,7 +445,7 @@ function analyzeSegments(rawSegments) {
       repeatedY: injectivity.repeatedY,
       steps: [
         { title: "Puntos abiertos y cerrados", lines: segments.map((segment) => `${pointLatex(segment.x1, segment.y1, segment.start)}\\to ${pointLatex(segment.x2, segment.y2, segment.end)}`) },
-        { title: "Ecuaciones que generan la grafica", lines: equations },
+        { title: "Ecuaciones que generan la gráfica", lines: equations },
         { title: "Dominio", lines: [...domainLines, `D_f=${segments.map((segment) => intervalLatex(segment.x1, segment.x2, segment.start, segment.end)).join("\\cup")}`] },
         { title: "Rango", lines: [...rangeLines, `R_f=${segments.map((segment) => rangeIntervalLatex(yInterval(segment))).join("\\cup")}`] },
         { title: "Prueba de inyectividad", lines: injectivity.lines },
@@ -459,7 +459,7 @@ function analyzeSegments(rawSegments) {
 function parseSegment(segment) {
   const x1 = parseNumber(segment.x1, "x inicial");
   const x2 = parseNumber(segment.x2, "x final");
-  if (x1 === x2) throw new Error("Un tramo no puede ser vertical, porque no seria funcion.");
+  if (x1 === x2) throw new Error("Un tramo no puede ser vertical, porque no sería función.");
   if (segment.kind === "quadratic") {
     const a = parseNumber(segment.a, "a");
     const b = parseNumber(segment.b, "b");
@@ -500,7 +500,7 @@ function analyzeInjectivity(segments) {
         return {
           injective: false,
           repeatedY: overlap.value,
-          lines: [`\\text{Una recta horizontal en }y=${formatNumber(overlap.value)}\\text{ corta la grafica mas de una vez.}`, `\\text{Por lo tanto, la funcion no es inyectiva.}`],
+          lines: [`\\text{Una recta horizontal en }y=${formatNumber(overlap.value)}\\text{ corta la gráfica más de una vez.}`, `\\text{Por lo tanto, la función no es inyectiva.}`],
         };
       }
     }
@@ -508,7 +508,7 @@ function analyzeInjectivity(segments) {
   return {
     injective: true,
     repeatedY: null,
-    lines: ["\\text{Ningun valor de }y\\text{ se repite entre los tramos.}", "\\text{Por la prueba de la recta horizontal, la funcion es inyectiva.}"],
+    lines: ["\\text{Ningún valor de }y\\text{ se repite entre los tramos.}", "\\text{Por la prueba de la recta horizontal, la función es inyectiva.}"],
   };
 }
 

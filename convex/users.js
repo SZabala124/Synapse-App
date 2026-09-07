@@ -17,6 +17,7 @@ const PLANS = {
 const SUBJECT_SELECTION_LIMIT = 7;
 const SUBJECT_SELECTION_EDITS_PER_PERIOD = 2;
 const SUBJECT_SELECTION_PERIOD_MS = 1000 * 60 * 60 * 24 * 92;
+const CAREER_SELECTION_EDITS_PER_PERIOD = 1;
 const MONTHLY_LIMIT_PERIOD_MS = 1000 * 60 * 60 * 24 * 30;
 const FREE_PRO_MATERIAL_LIMIT = 3;
 const PRO_TOOL_LIMIT = 3;
@@ -146,8 +147,36 @@ export const ensureProfile = mutation({
     const existing = pickBestUser(matchingUsers);
     const seededType = seedUserType(email);
     const profilePatch = compactProfilePatch(args);
+    if (resolveUserType(existing, email) !== USER_TYPES.admin && (profilePatch.careers?.length ?? 0) > 2) {
+      throw new Error("Solo puedes seleccionar hasta 2 carreras a la vez.");
+    }
     if (existing) {
       const nextType = existing.userType ?? seededType;
+      const requestedCareers = profilePatch.careers;
+      const careerSelectionChanged = Array.isArray(requestedCareers)
+        && !sameStringSet(existing.careers ?? [], requestedCareers);
+      let careerSelectionPatch = {};
+      if (careerSelectionChanged && nextType !== USER_TYPES.admin && seededType !== USER_TYPES.admin) {
+        const now = Date.now();
+        const periodEnd = existing.careerSelectionPeriodEnd ?? 0;
+        const periodExpired = !periodEnd || periodEnd <= now;
+        const hasPreviousSelection = (existing.careers ?? []).length > 0;
+        const currentEditsRemaining = periodExpired
+          ? CAREER_SELECTION_EDITS_PER_PERIOD
+          : normalizeCareerEditsRemaining(existing.careerSelectionEditsRemaining);
+        const nextEditsRemaining = hasPreviousSelection
+          ? currentEditsRemaining - 1
+          : currentEditsRemaining;
+        if (nextEditsRemaining < 0) {
+          throw new Error("Ya usaste tu cambio de carreras para este trimestre.");
+        }
+        careerSelectionPatch = {
+          careerSelectionPeriodStart: periodExpired ? now : existing.careerSelectionPeriodStart ?? now,
+          careerSelectionPeriodEnd: periodExpired ? now + SUBJECT_SELECTION_PERIOD_MS : existing.careerSelectionPeriodEnd,
+          careerSelectionEditsRemaining: nextEditsRemaining,
+          careerSelectionUpdatedAt: now,
+        };
+      }
       if (nextType !== existing.userType || seededType === USER_TYPES.admin || Object.keys(profilePatch).length > 0) {
         for (const user of matchingUsers) {
           const userTypePatch = user.userType === USER_TYPES.blocked
@@ -157,6 +186,7 @@ export const ensureProfile = mutation({
               : nextType;
           await ctx.db.patch(user._id, {
             ...profilePatch,
+            ...careerSelectionPatch,
             userType: userTypePatch,
           });
         }
@@ -221,12 +251,12 @@ export const saveSubjectSelection = mutation({
     const existing = pickBestUser(matchingUsers);
     const userType = resolveUserType(existing, email);
     const plan = resolvePlan(existing);
-    if (userType === USER_TYPES.admin || plan !== PLANS.free) {
-      return {
-        selectedSubjectCodes: [],
-        editsRemaining: SUBJECT_SELECTION_EDITS_PER_PERIOD,
-        modalSeen: true,
-      };
+    const term = plan === PLANS.free
+      ? await ctx.db.query("academicTerms").withIndex("by_key", (q) => q.eq("key", "free")).unique()
+      : null;
+    if (term?.processing) throw new Error("Se está reiniciando el trimestre. Intenta guardar en unos segundos.");
+    if (userType === USER_TYPES.admin) {
+      return formatSubjectSelectionMutationResult(existing, email);
     }
 
     const careers = existing?.careers ?? [];
@@ -250,7 +280,7 @@ export const saveSubjectSelection = mutation({
     const currentEditsRemaining = periodExpired
       ? SUBJECT_SELECTION_EDITS_PER_PERIOD
       : normalizeEditsRemaining(existing?.subjectSelectionEditsRemaining);
-    const nextEditsRemaining = previousModalSeen && selectionChanged
+    const nextEditsRemaining = plan === PLANS.free && previousModalSeen && selectionChanged
       ? currentEditsRemaining - 1
       : currentEditsRemaining;
 
@@ -263,7 +293,7 @@ export const saveSubjectSelection = mutation({
       selectedSubjectCodes: subjectCodes,
       subjectSelectionModalSeen: true,
       subjectSelectionPeriodStart: periodExpired ? now : existing?.subjectSelectionPeriodStart ?? now,
-      subjectSelectionPeriodEnd: periodExpired ? now + SUBJECT_SELECTION_PERIOD_MS : existing?.subjectSelectionPeriodEnd,
+      subjectSelectionPeriodEnd: term && term.resetAt > now ? term.resetAt : periodExpired ? now + SUBJECT_SELECTION_PERIOD_MS : existing?.subjectSelectionPeriodEnd,
       subjectSelectionEditsRemaining: nextEditsRemaining,
       subjectSelectionUpdatedAt: now,
     };
@@ -272,14 +302,14 @@ export const saveSubjectSelection = mutation({
       for (const user of matchingUsers) {
         await ctx.db.patch(user._id, patch);
       }
-      return { ...existing, ...patch };
+      return formatSubjectSelectionMutationResult({ ...existing, ...patch }, email);
     }
 
     const id = await ctx.db.insert("users", {
       ...patch,
       userType: USER_TYPES.user,
     });
-    return await ctx.db.get(id);
+    return formatSubjectSelectionMutationResult(await ctx.db.get(id), email);
   },
 });
 
@@ -309,6 +339,10 @@ export const consumeMaterialAccess = mutation({
     const document = await ctx.db.get(args.documentId);
     if (!document) throw new Error("Este material ya no esta disponible.");
     const preview = materialAccessState(user, email, document);
+    if (resolvePlan(user) === PLANS.free && resolveUserType(user, email) !== USER_TYPES.admin) {
+      const term = await ctx.db.query("academicTerms").withIndex("by_key", (q) => q.eq("key", "free")).unique();
+      if (term?.processing) throw new Error("Se está reiniciando el trimestre. Intenta abrir el material en unos segundos.");
+    }
     if (!preview.allowed) throw new Error(preview.reason ?? "No puedes abrir este material con tu plan actual.");
     if (!preview.consumesQuota) return preview;
 
@@ -470,7 +504,7 @@ export async function isAdmin(ctx, email) {
 
 export async function assertAdmin(ctx, email) {
   if (!(await isAdmin(ctx, email))) {
-    throw new Error("Solo administradores pueden realizar esta accion.");
+    throw new Error("Solo administradores pueden realizar esta acción.");
   }
 }
 
@@ -490,10 +524,19 @@ function pickBestUser(users) {
 }
 
 function withResolvedUserType(user) {
+  const userType = resolveUserType(user, user?.email);
+  const careerPeriodExpired = Boolean(
+    user?.careerSelectionPeriodEnd && user.careerSelectionPeriodEnd <= Date.now(),
+  );
   return {
     ...user,
-    userType: resolveUserType(user, user.email),
+    userType,
     plan: resolvePlan(user),
+    careerSelectionEditsRemaining: userType === USER_TYPES.admin
+      ? null
+      : careerPeriodExpired
+        ? CAREER_SELECTION_EDITS_PER_PERIOD
+        : normalizeCareerEditsRemaining(user?.careerSelectionEditsRemaining),
   };
 }
 
@@ -541,6 +584,26 @@ function buildEntitlements(user, email) {
   };
 }
 
+function formatSubjectSelectionMutationResult(user, email) {
+  const editsRemaining = normalizeEditsRemaining(user?.subjectSelectionEditsRemaining);
+  return {
+    email,
+    userType: resolveUserType(user, email),
+    plan: resolvePlan(user),
+    selectedSubjectCodes: sanitizeSubjectCodes(user?.selectedSubjectCodes),
+    modalSeen: Boolean(user?.subjectSelectionModalSeen),
+    subjectSelectionModalSeen: Boolean(user?.subjectSelectionModalSeen),
+    editsRemaining,
+    subjectSelectionEditsRemaining: editsRemaining,
+    periodStart: user?.subjectSelectionPeriodStart ?? null,
+    subjectSelectionPeriodStart: user?.subjectSelectionPeriodStart ?? null,
+    periodEnd: user?.subjectSelectionPeriodEnd ?? null,
+    subjectSelectionPeriodEnd: user?.subjectSelectionPeriodEnd ?? null,
+    updatedAt: user?.subjectSelectionUpdatedAt ?? Date.now(),
+    subjectSelectionUpdatedAt: user?.subjectSelectionUpdatedAt ?? Date.now(),
+  };
+}
+
 function materialAccessState(user, email, document) {
   const entitlement = buildEntitlements(user, email);
   const level = String(document.level ?? "").toLowerCase();
@@ -573,7 +636,7 @@ function materialAccessState(user, email, document) {
   if (remaining <= 0) {
     return {
       allowed: false,
-      reason: "Ya usaste tus 3 materiales Pro de este mes. Mejora tu plan para abrir materiales Pro sin limites.",
+      reason: "Ya usaste tus 3 materiales Pro de este mes. Mejora tu plan para abrir materiales Pro sin límites.",
       plan: entitlement.plan,
       remaining: 0,
       resetAt: entitlement.proMaterials.resetAt,
@@ -589,7 +652,7 @@ function materialAccessState(user, email, document) {
     remainingAfterUse: Math.max(0, remaining - 1),
     limit: FREE_PRO_MATERIAL_LIMIT,
     resetAt: entitlement.proMaterials.resetAt,
-    message: `Este material es Pro. Si continuas usaras 1 de tus ${FREE_PRO_MATERIAL_LIMIT} materiales Pro del mes.`,
+    message: `Este material es Pro. Si continúas usarás 1 de tus ${FREE_PRO_MATERIAL_LIMIT} materiales Pro del mes.`,
   };
 }
 
@@ -609,7 +672,7 @@ function toolAccessState(user, email, toolId) {
   if (entitlement.plan === PLANS.free) {
     return {
       allowed: false,
-      reason: "Las herramientas estan disponibles desde el plan Pro.",
+      reason: "Las herramientas están disponibles desde el plan Pro.",
       plan: entitlement.plan,
       remaining: 0,
       resetAt: entitlement.tools.resetAt,
@@ -648,7 +711,7 @@ function toolAccessState(user, email, toolId) {
     remainingAfterUse: Math.max(0, remaining - 1),
     limit: PRO_TOOL_LIMIT,
     resetAt: entitlement.tools.resetAt,
-    message: `Esta herramienta usara 1 de tus ${PRO_TOOL_LIMIT} herramientas disponibles este mes.`,
+    message: `Esta herramienta usará 1 de tus ${PRO_TOOL_LIMIT} herramientas disponibles este mes.`,
   };
 }
 
@@ -740,6 +803,11 @@ function sanitizeSubjectCodes(codes) {
 function normalizeEditsRemaining(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return SUBJECT_SELECTION_EDITS_PER_PERIOD;
   return Math.max(0, Math.min(SUBJECT_SELECTION_EDITS_PER_PERIOD, Math.floor(value)));
+}
+
+function normalizeCareerEditsRemaining(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return CAREER_SELECTION_EDITS_PER_PERIOD;
+  return Math.max(0, Math.min(CAREER_SELECTION_EDITS_PER_PERIOD, Math.floor(value)));
 }
 
 function sameStringSet(left, right) {

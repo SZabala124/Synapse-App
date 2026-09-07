@@ -5,7 +5,7 @@ import { ToolMetaTags } from "./ToolMetaTags";
 
 const FORM_OPTIONS = [
   { value: "general", label: "Forma general: ax^2 + bx + c" },
-  { value: "vertex", label: "Forma vertice: a(x - h)^2 + k" },
+  { value: "vertex", label: "Forma vértice: a(x - h)^2 + k" },
   { value: "coefficients", label: "Coeficientes: a, b, c" },
 ];
 
@@ -56,7 +56,7 @@ export function QuadraticAnalysisToolModal({ onClose }) {
       <section className="course-detail-modal truth-tool-modal quadratic-tool-modal">
         <header>
           <div>
-            <h2>Analisis grafico de cuadraticas</h2>
+            <h2>Análisis gráfico de cuadráticas</h2>
             <ToolMetaTags topic="Parabolas, dominio, rango y crecimiento" />
           </div>
           <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
@@ -65,7 +65,7 @@ export function QuadraticAnalysisToolModal({ onClose }) {
         <div className="truth-tool-layout algebra-tool-layout quadratic-tool-layout">
           <form className="truth-tool-form algebra-tool-form">
             <label>
-              Como vas a escribir la funcion
+              Cómo vas a escribir la función
               <select value={mode} onChange={(event) => changeMode(event.target.value)}>
                 {FORM_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
               </select>
@@ -98,14 +98,14 @@ export function QuadraticAnalysisToolModal({ onClose }) {
             )}
 
             {mode !== "coefficients" && (
-              <div className="truth-operator-row algebra-operator-row quadratic-operator-row" aria-label="Simbolos de funciones cuadraticas">
+              <div className="truth-operator-row algebra-operator-row quadratic-operator-row" aria-label="Símbolos de funciones cuadráticas">
                 {["x", "^2", "(", ")", "+", "-", "/", "f(x)=", "sqrt()"].map((symbol) => (
                   <button type="button" key={symbol} onClick={() => insertSymbol(symbol)}>{symbol}</button>
                 ))}
               </div>
             )}
 
-            <p className="truth-tool-hint">Usa funciones cuadraticas sencillas con variable x. En forma vertice se acepta a(x-h)^2+k; en forma general, ax^2+bx+c.</p>
+            <p className="truth-tool-hint">Usa funciones cuadráticas sencillas con variable x. En forma vértice se acepta a(x-h)^2+k; en forma general, ax^2+bx+c.</p>
             <button className="secondary-action truth-clear-button" type="button" onClick={() => mode === "coefficients" ? setCoefficients({ a: "", b: "", c: "" }) : setExpression("")}>
               Borrar datos
             </button>
@@ -189,14 +189,14 @@ function analyzeQuadratic(mode, expression, coefficients) {
       steps: [
         { title: "Forma general", lines: [`f(x)=ax^2+bx+c`, `a=${formatNumber(a)},\\quad b=${formatNumber(b)},\\quad c=${formatNumber(c)}`] },
         { title: "Vertice y eje de simetria", lines: [`h=\\frac{-b}{2a}=\\frac{-(${formatNumber(b)})}{2(${formatNumber(a)})}=${formatNumber(h)}`, `k=f(h)=f(${formatNumber(h)})=${formatNumber(k)}`, `V=(${formatNumber(h)},${formatNumber(k)}),\\quad \\text{eje: }x=${formatNumber(h)}`] },
-        { title: "Concavidad", lines: [opensUp ? "a>0\\Rightarrow \\text{la parabola abre hacia arriba y el vertice es minimo}" : "a<0\\Rightarrow \\text{la parabola abre hacia abajo y el vertice es maximo}"] },
+        { title: "Concavidad", lines: [opensUp ? "a>0\\Rightarrow \\text{la parábola abre hacia arriba y el vértice es mínimo}" : "a<0\\Rightarrow \\text{la parábola abre hacia abajo y el vértice es máximo}"] },
         { title: "Cortes con los ejes", lines: [`\\Delta=b^2-4ac=${formatNumber(discriminant)}`, roots.length ? roots.map((root) => `x=${formatNumber(root)}\\Rightarrow (${formatNumber(root)},0)`) : ["\\Delta<0\\Rightarrow \\text{no hay cortes reales con el eje X}"], [`f(0)=c=${formatNumber(c)}\\Rightarrow (0,${formatNumber(c)})`]].flat() },
         { title: "Dominio y rango", lines: [`D_f=${domain}`, `R_f=${range}`] },
         { title: "Decrecimiento y crecimiento", lines: [`\\text{Decrece en }${decreasing}`, `\\text{Crece en }${increasing}`] },
       ],
     };
   } catch (error) {
-    return { error: error?.message ?? "No pude analizar esa funcion cuadratica." };
+    return { error: error?.message ?? "No pude analizar esa función cuadrática." };
   }
 }
 
@@ -263,7 +263,7 @@ function QuadraticGraph({ analysis }) {
 
   return (
     <div className="quadratic-graph-card">
-      <div className="quadratic-graph-toolbar" aria-label="Controles de grafica">
+      <div className="quadratic-graph-toolbar" aria-label="Controles de gráfica">
         <button type="button" onClick={() => updateZoom(viewport.zoom * 1.22)}>+</button>
         <button type="button" onClick={() => updateZoom(viewport.zoom / 1.22)}>-</button>
         <button type="button" onClick={resetView}>Reset</button>
@@ -272,7 +272,7 @@ function QuadraticGraph({ analysis }) {
       <svg
         viewBox="0 0 720 420"
         role="img"
-        aria-label="Grafica de la funcion cuadratica"
+        aria-label="Gráfica de la función cuadrática"
         onMouseMove={moveHover}
         onMouseLeave={() => setHoverPoint(null)}
         onPointerDown={startPan}
@@ -313,19 +313,19 @@ function QuadraticGraph({ analysis }) {
 
 function parseQuadraticExpression(input, mode) {
   const expression = sanitizeQuadraticInput(input).replace(/^f\(x\)=/, "").replace(/\s+/g, "");
-  if (!expression) throw new Error("Escribe una funcion cuadratica.");
+  if (!expression) throw new Error("Escribe una función cuadrática.");
   if (mode === "vertex" || /\([^()]+\)\^2/.test(expression)) return parseVertexForm(expression);
   const terms = parseLinearTerms(expression);
   const a = terms.find((term) => term.variable === "x" && term.power === 2)?.coefficient ?? 0;
   const b = terms.find((term) => term.variable === "x" && term.power === 1)?.coefficient ?? 0;
   const c = terms.find((term) => !term.variable || term.power === 0)?.coefficient ?? 0;
-  if (!a) throw new Error("La forma general debe incluir un termino con x^2.");
+  if (!a) throw new Error("La forma general debe incluir un término con x^2.");
   return { a, b, c };
 }
 
 function parseVertexForm(expression) {
   const match = expression.match(/^([+-]?(?:\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?)?)\((x[+-]\d+(?:\.\d+)?)\)\^2([+-]\d+(?:\.\d+)?)?$/);
-  if (!match) throw new Error("Usa forma vertice como 2(x+1)^2-8 o -(x-3)^2+4.");
+  if (!match) throw new Error("Usa forma vértice como 2(x+1)^2-8 o -(x-3)^2+4.");
   const a = parseCoefficient(match[1], true);
   const inside = match[2].replace("x", "");
   const h = -Number(inside);
@@ -430,7 +430,7 @@ function parseCoefficient(value, allowImplicit) {
     return numerator / denominator;
   }
   const number = Number(value);
-  if (Number.isNaN(number)) throw new Error(`No pude leer el numero "${value}".`);
+  if (Number.isNaN(number)) throw new Error(`No pude leer el número "${value}".`);
   return number;
 }
 

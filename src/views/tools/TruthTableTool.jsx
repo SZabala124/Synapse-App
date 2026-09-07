@@ -44,7 +44,7 @@ export function TruthTableModal({ onClose }) {
         <header>
           <div>
             <h2>Tabla de verdad de proposiciones</h2>
-            <ToolMetaTags topic="Proposiciones Logicas y Tablas de la Verdad" />
+            <ToolMetaTags topic="Proposiciones Lógicas y Tablas de la Verdad" />
           </div>
           <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
         </header>
@@ -60,7 +60,7 @@ export function TruthTableModal({ onClose }) {
               </select>
             </label>
             <label>
-              Proposicion
+              Proposición
               <textarea
                 ref={expressionRef}
                 value={expression}
@@ -74,9 +74,9 @@ export function TruthTableModal({ onClose }) {
                 <button type="button" key={operator} onClick={() => insertOperator(operator)}>{operator}</button>
               ))}
             </div>
-            <p className="truth-tool-hint">Tambien puedes escribir !, ~, &, ^, | o v como atajos. Usa solo las variables seleccionadas.</p>
+            <p className="truth-tool-hint">También puedes escribir !, ~, &, ^, | o v como atajos. Usa solo las variables seleccionadas.</p>
             <button className="secondary-action truth-clear-button" type="button" onClick={() => setExpression("")} disabled={!expression}>
-              Borrar proposicion
+              Borrar proposición
             </button>
           </form>
 
@@ -125,14 +125,14 @@ export function TruthTableModal({ onClose }) {
 function buildTruthTable(input, variables) {
   try {
     const tokens = tokenizeLogic(input);
-    if (tokens.length === 0) return { error: "Escribe una proposicion para generar la tabla." };
+    if (tokens.length === 0) return { error: "Escribe una proposición para generar la tabla." };
     const parser = createLogicParser(tokens);
     const ast = parser.parseExpression();
     if (parser.peek()) return { error: `No se pudo interpretar "${parser.peek().value}".` };
     const usedVariables = Array.from(collectVariables(ast));
     const invalidVariable = usedVariables.find((variable) => !variables.includes(variable));
-    if (invalidVariable) return { error: `La variable "${invalidVariable}" no esta entre las variables seleccionadas.` };
-    if (usedVariables.length < 2) return { error: "Usa al menos dos variables en la proposicion." };
+    if (invalidVariable) return { error: `La variable "${invalidVariable}" no está entre las variables seleccionadas.` };
+    if (usedVariables.length < 2) return { error: "Usa al menos dos variables en la proposición." };
 
     const expressionColumns = collectExpressionColumns(ast);
     const columns = [
@@ -153,12 +153,12 @@ function buildTruthTable(input, variables) {
     return {
       columns,
       rows,
-      classification: allTrue ? "Tautologia" : allFalse ? "Contradiccion" : "Contingencia",
+      classification: allTrue ? "Tautología" : allFalse ? "Contradicción" : "Contingencia",
       conclusion: allTrue
-        ? "Como la proposicion final es verdadera en todos los casos, se concluye que es una tautologia."
+        ? "Como la proposición final es verdadera en todos los casos, se concluye que es una tautología."
         : allFalse
-          ? "Como la proposicion final es falsa en todos los casos, se concluye que es una contradiccion."
-          : "Como la proposicion final cambia de valor segun el caso, se concluye que es una contingencia.",
+          ? "Como la proposición final es falsa en todos los casos, se concluye que es una contradicción."
+          : "Como la proposición final cambia de valor según el caso, se concluye que es una contingencia.",
     };
   } catch (error) {
     return { error: error?.message ?? "No se pudo calcular la tabla de verdad." };
@@ -267,7 +267,7 @@ function createLogicParser(tokens) {
   }
   function parsePrimary() {
     const token = api.consume();
-    if (!token) throw new Error("La proposicion esta incompleta.");
+    if (!token) throw new Error("La proposición está incompleta.");
     if (token.type === "variable") return { type: "variable", name: token.value };
     if (token.type === "(") {
       const node = api.parseExpression();

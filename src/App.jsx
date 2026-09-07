@@ -150,6 +150,9 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
   const pendingAdminPaymentCount = useQuery(api.payments.pendingCount, convexEnabled && isAdminForMaterialAccess ? { adminEmail: currentUser.email } : "skip");
   const isBlockedUser = convexEnabled && (subjectSelection?.userType === "blocked" || entitlements?.userType === "blocked");
   const hasPaidPlan = ["pro", "excellence"].includes(currentUserWithSubjectSelection.plan);
+  const planExpiresAt = useQuery(api.payments.planExpiration,
+    convexEnabled && hasPaidPlan && !isAdminForMaterialAccess
+      ? { userEmail: currentUser.email, plan: currentUserWithSubjectSelection.plan } : "skip");
   const hasSavedSubjectSelection = Boolean(
     (subjectSelection?.modalSeen || currentUser.subjectSelectionModalSeen) &&
     (currentUserWithSubjectSelection.selectedSubjectCodes ?? []).length > 0,
@@ -186,9 +189,11 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
     const nextUser = {
       ...currentUser,
       selectedSubjectCodes: updatedProfile?.selectedSubjectCodes ?? subjectCodes,
-      subjectSelectionModalSeen: true,
-      subjectSelectionEditsRemaining: updatedProfile?.subjectSelectionEditsRemaining,
-      subjectSelectionPeriodEnd: updatedProfile?.subjectSelectionPeriodEnd,
+      subjectSelectionModalSeen: updatedProfile?.subjectSelectionModalSeen ?? updatedProfile?.modalSeen ?? true,
+      subjectSelectionEditsRemaining: updatedProfile?.subjectSelectionEditsRemaining ?? updatedProfile?.editsRemaining,
+      subjectSelectionPeriodStart: updatedProfile?.subjectSelectionPeriodStart ?? updatedProfile?.periodStart,
+      subjectSelectionPeriodEnd: updatedProfile?.subjectSelectionPeriodEnd ?? updatedProfile?.periodEnd,
+      subjectSelectionUpdatedAt: updatedProfile?.subjectSelectionUpdatedAt ?? updatedProfile?.updatedAt,
     };
     saveJson(SESSION_KEY, nextUser);
     onUserUpdate(nextUser);
@@ -257,6 +262,8 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
         onThemeChange={onThemeChange}
         isAdmin={isAdminForMaterialAccess}
         pendingPaymentCount={pendingAdminPaymentCount ?? 0}
+        showPlanExpiration={hasPaidPlan && !isAdminForMaterialAccess}
+        planExpiresAt={planExpiresAt}
       />
       <main id="view-root" className="view-root is-mounted" tabIndex="-1">
         {currentRoute === "landing" && (
@@ -419,7 +426,7 @@ function BlockedAccountScreen({ onSignOut }) {
           Esta cuenta fue bloqueada por romper reglas de uso o no cumplir con un comportamiento adecuado dentro de la app.
         </p>
         <button className="primary-action danger-primary" type="button" onClick={onSignOut}>
-          Cerrar sesion
+          Cerrar sesión
         </button>
       </section>
     </main>
@@ -475,6 +482,7 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (busy || confirmEditOpen) return;
     setError("");
     if (!canEdit) {
       setError("Ya usaste tus 2 ediciones de materias para este trimestre.");
@@ -484,7 +492,7 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
       setError("Selecciona al menos una materia para continuar.");
       return;
     }
-    if (!isRequiredFirstSelection && selectionChanged) {
+    if (selectionChanged) {
       setConfirmEditOpen(true);
       return;
     }
@@ -496,7 +504,7 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
       setBusy(true);
       await onSave(selectedCodes);
     } catch (saveError) {
-      setError(saveError?.message ?? "No se pudo guardar la seleccion.");
+      setError(saveError?.message ?? "No se pudo guardar la selección.");
     } finally {
       setBusy(false);
       setConfirmEditOpen(false);
@@ -505,7 +513,7 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
 
   return createPortal(
     <>
-      <div className="course-detail-overlay is-visible subject-selection-overlay" role="dialog" aria-modal="true">
+      <div className="course-detail-overlay is-visible subject-selection-overlay" role="dialog" aria-modal={!confirmEditOpen} inert={confirmEditOpen ? "" : undefined}>
         <section className="course-detail-modal subject-selection-modal">
           <header>
             <div>
@@ -515,7 +523,7 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
           </header>
           <form className="subject-selection-body" onSubmit={handleSubmit}>
             <p>
-              Escoge hasta {limit} materias de tus carreras. Solo veras materiales y herramientas de estas materias hasta {periodEndLabel}.
+              Escoge hasta {limit} materias de tus carreras. Solo verás materiales y herramientas de estas materias hasta {periodEndLabel}.
             </p>
             {availableSubjects.length === 0 ? (
               <div className="subject-selection-empty">
@@ -529,12 +537,12 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Nombre o codigo..."
+                    placeholder="Nombre o código..."
                   />
                 </label>
                 <div className="subject-selection-picked" aria-label="Materias seleccionadas">
                   {selectedSubjects.length === 0 ? (
-                    <span>Ninguna materia seleccionada todavia.</span>
+                    <span>Ninguna materia seleccionada todavía.</span>
                   ) : selectedSubjects.map((subject) => (
                     <button key={subject.code} type="button" onClick={() => toggleSubject(subject.code)}>
                       {subject.name} <small>{subject.code}</small>
@@ -583,6 +591,7 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
       {confirmEditOpen && (
         <SubjectSelectionEditConfirmModal
           editsRemaining={selectionState.editsRemaining ?? 0}
+          consumesEdit={!isRequiredFirstSelection && selectionState.plan === "free" && selectionState.userType !== "admin"}
           busy={busy}
           onCancel={() => setConfirmEditOpen(false)}
           onConfirm={saveSelection}
@@ -601,25 +610,27 @@ function formatSubjectSelectionResetDate(timestamp) {
   });
 }
 
-function SubjectSelectionEditConfirmModal({ editsRemaining, busy, onCancel, onConfirm }) {
+function SubjectSelectionEditConfirmModal({ editsRemaining, consumesEdit, busy, onCancel, onConfirm }) {
   const nextEdits = Math.max(0, editsRemaining - 1);
   return (
-    <div className="course-detail-overlay is-visible subject-edit-confirm-overlay" role="dialog" aria-modal="true">
+    <div className="course-detail-overlay is-visible subject-edit-confirm-overlay" role="dialog" aria-modal="true" aria-label="Confirmar selección de materias" style={{ zIndex: 130 }}>
       <section className="course-detail-modal subject-edit-confirm-modal">
         <header>
           <div>
-            <h2>Usar una edicion</h2>
-            <span>Confirmacion requerida</span>
+            <h2>{consumesEdit ? "Usar una edición" : "Confirmar materias"}</h2>
+            <span>Confirmación requerida</span>
           </div>
         </header>
         <div className="course-detail-body">
           <p>
-            Guardar estos cambios gastara una edicion de tus materias del trimestre. Te quedaran {nextEdits} ediciones disponibles.
+            {consumesEdit
+              ? `Guardar estos cambios gastará una edición de tus materias del trimestre. Te quedarán ${nextEdits} ${nextEdits === 1 ? "edición disponible" : "ediciones disponibles"}.`
+              : "¿Confirmas que deseas guardar esta selección de materias? Este cambio no consume una edición."}
           </p>
           <div className="profile-actions">
-            <button className="quiet-button" type="button" onClick={onCancel} disabled={busy}>Cancelar</button>
+            <button className="quiet-button" type="button" onClick={onCancel} disabled={busy} autoFocus>Cancelar</button>
             <button className="primary-action" type="button" onClick={onConfirm} disabled={busy}>
-              {busy ? "Guardando..." : "Si, guardar cambios"}
+              {busy ? "Guardando..." : "Sí, guardar cambios"}
             </button>
           </div>
         </div>
@@ -634,10 +645,17 @@ function ConvexProfileSection({ currentUser, subjectSelection, pendingPayment, o
 
   async function saveProfile(profilePatch) {
     const nextUser = { ...currentUser, ...profilePatch };
-    await ensureProfile(toProfileArgs(nextUser));
-    persistLocalUserProfile(nextUser);
-    saveJson(SESSION_KEY, nextUser);
-    onUserUpdate(nextUser);
+    const savedProfile = await ensureProfile(toProfileArgs(nextUser));
+    const resolvedUser = {
+      ...nextUser,
+      careerSelectionPeriodStart: savedProfile?.careerSelectionPeriodStart,
+      careerSelectionPeriodEnd: savedProfile?.careerSelectionPeriodEnd,
+      careerSelectionEditsRemaining: savedProfile?.careerSelectionEditsRemaining,
+      careerSelectionUpdatedAt: savedProfile?.careerSelectionUpdatedAt,
+    };
+    persistLocalUserProfile(resolvedUser);
+    saveJson(SESSION_KEY, resolvedUser);
+    onUserUpdate(resolvedUser);
   }
 
   return (
@@ -721,7 +739,7 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   useEffect(() => {
     if (!canLoadMaterials || !libraryState || (libraryState.statsReady && libraryState.searchIndexReady) || !canAddMaterials) return;
     rebuildLibraryStats({ userEmail: currentUser.email }).catch((error) => {
-      console.warn("No se pudieron inicializar los indices de biblioteca.", error);
+      console.warn("No se pudieron inicializar los índices de biblioteca.", error);
     });
   }, [canAddMaterials, canLoadMaterials, currentUser.email, libraryState, rebuildLibraryStats]);
 
@@ -804,14 +822,14 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   async function rateMaterial(material, rating) {
     updateMaterialEverywhere(material._id, (item) => optimisticRatingPatch(item, rating));
     rateDocument({ id: material._id, userEmail: currentUser.email, rating }).catch((error) => {
-      console.warn("No se pudo guardar la calificacion.", error);
+      console.warn("No se pudo guardar la calificación.", error);
     });
   }
 
   async function clearMaterialRating(material) {
     updateMaterialEverywhere(material._id, optimisticRemoveRatingPatch);
     removeDocumentRating({ id: material._id, userEmail: currentUser.email }).catch((error) => {
-      console.warn("No se pudo quitar la calificacion.", error);
+      console.warn("No se pudo quitar la calificación.", error);
     });
   }
 
@@ -837,7 +855,7 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
       return {
         allowed: false,
         title: "Limite mensual alcanzado",
-        message: "Ya usaste tus 3 materiales Pro de este mes. Mejora a Pro para abrir materiales Pro sin limites.",
+        message: "Ya usaste tus 3 materiales Pro de este mes. Mejora a Pro para abrir materiales Pro sin límites.",
         actionLabel: "Ver planes",
         onAction: () => { window.location.hash = "plans"; },
       };
@@ -847,7 +865,7 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
       allowed: false,
       needsConfirmation: true,
       title: "Usar material Pro",
-      message: `Este material gastara 1 de tus 3 materiales Pro del mes. Te quedaran ${Math.max(0, remaining - 1)}.`,
+      message: `Este material gastará 1 de tus 3 materiales Pro del mes. Te quedarán ${Math.max(0, remaining - 1)}.`,
       confirmLabel: "Abrir material",
       onConfirm: async () => {
         await consumeMaterialAccess({ email: currentUser.email, documentId: material._id });
@@ -896,7 +914,7 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
     return {
       icon: "⌁",
       label: "0 usos",
-      title: "Ya usaste tus 3 materiales Pro de este mes. Mejora tu plan para desbloquear mas.",
+      title: "Ya usaste tus 3 materiales Pro de este mes. Mejora tu plan para desbloquear más.",
       className: "has-access-locked",
     };
   }
@@ -1070,7 +1088,7 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
       materials={materials}
       subjects={materialSubjects}
       watermarkText={buildMaterialWatermark(currentUser)}
-      remoteStatus={!canLoadMaterials ? "Selecciona tus materias para cargar la biblioteca" : materialCatalog.status === "LoadingFirstPage" ? "Creando cache local" : "Busqueda local instantanea"}
+      remoteStatus={!canLoadMaterials ? "Selecciona tus materias para cargar la biblioteca" : materialCatalog.status === "LoadingFirstPage" ? "Creando caché local" : ""}
       canAddMaterial={canAddMaterials}
       search={search}
       format={format}
@@ -1140,13 +1158,20 @@ function findMaterialRow(materialId, localRows = [], remoteRows = []) {
 
 function sortMaterialRows(rows, sort = "Recientes") {
   const copy = [...rows];
-  if (sort === "Mas vistos") {
+  if (normalizeMaterialSort(sort) === "mas vistos") {
     return copy.sort((left, right) =>
       (right.viewCount ?? 0) - (left.viewCount ?? 0) ||
       (right.createdAt ?? 0) - (left.createdAt ?? 0),
     );
   }
   return copy.sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+}
+
+function normalizeMaterialSort(sort) {
+  return String(sort ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function materialMatchesListFilters(row, listArgs = {}) {
@@ -1156,7 +1181,7 @@ function materialMatchesListFilters(row, listArgs = {}) {
   const search = normalizeSearchTextLocal(listArgs.search);
 
   if (listArgs.savedOnly && !row.saved) return false;
-  if (format && row.format !== format) return false;
+  if (format && !materialFormatMatches(row.format, format)) return false;
   if (level && row.level !== level) return false;
   if (subject && !materialSubjectIds(row).includes(subject)) return false;
   if (!search) return true;
@@ -1176,7 +1201,7 @@ function materialMatchesFacetFilters(row, facetArgs = {}) {
   const level = facetArgs.level && facetArgs.level !== "Todos" ? facetArgs.level : null;
   const subject = facetArgs.subject && facetArgs.subject !== "Todas" ? facetArgs.subject : null;
 
-  if (format && row.format !== format) return false;
+  if (format && !materialFormatMatches(row.format, format)) return false;
   if (level && row.level !== level) return false;
   if (subject && !materialSubjectIds(row).includes(subject)) return false;
   return true;
@@ -1193,7 +1218,7 @@ function materialMatchesFormatFacetContext(row, facetArgs = {}) {
 function materialMatchesLevelFacetContext(row, facetArgs = {}) {
   const format = facetArgs.format && facetArgs.format !== "Todos" ? facetArgs.format : null;
   const subject = facetArgs.subject && facetArgs.subject !== "Todas" ? facetArgs.subject : null;
-  if (format && row.format !== format) return false;
+  if (format && !materialFormatMatches(row.format, format)) return false;
   if (subject && !materialSubjectIds(row).includes(subject)) return false;
   return true;
 }
@@ -1201,7 +1226,7 @@ function materialMatchesLevelFacetContext(row, facetArgs = {}) {
 function materialMatchesSubjectFacetContext(row, facetArgs = {}) {
   const format = facetArgs.format && facetArgs.format !== "Todos" ? facetArgs.format : null;
   const level = facetArgs.level && facetArgs.level !== "Todos" ? facetArgs.level : null;
-  if (format && row.format !== format) return false;
+  if (format && !materialFormatMatches(row.format, format)) return false;
   if (level && row.level !== level) return false;
   return true;
 }
@@ -1227,7 +1252,7 @@ function buildFacetStatsFromRows(rows = [], facetArgs = {}) {
 
 function countRowsBy(rows, key) {
   return rows.reduce((counts, row) => {
-    const value = row?.[key];
+    const value = key === "format" ? normalizeMaterialFormatLocal(row?.[key]) : row?.[key];
     if (value) counts[value] = (counts[value] ?? 0) + 1;
     return counts;
   }, {});
@@ -1267,6 +1292,16 @@ function materialSubjectIds(row) {
     return Array.from(new Set(row.subjects.filter(Boolean)));
   }
   return row?.subject ? [row.subject] : [];
+}
+
+function normalizeMaterialFormatLocal(format) {
+  if (format === "Guia" || format === "Guía") return "Guía";
+  if (format === "Presentacion" || format === "Presentación") return "Presentación";
+  return format;
+}
+
+function materialFormatMatches(actualFormat, selectedFormat) {
+  return normalizeMaterialFormatLocal(actualFormat) === normalizeMaterialFormatLocal(selectedFormat);
 }
 
 function toOptimisticDocumentRow(id, document, timestamp, ownerEmail) {
@@ -1381,7 +1416,7 @@ function ConvexCommentsSection({ currentUser }) {
       currentUser={currentUser}
       canModerate={canModerate}
       reports={reports}
-      remoteStatus="Comentarios sincronizados con Synapse"
+      remoteStatus=""
       onCreateComment={addComment}
       onToggleLike={toggleCommentLike}
       onEditComment={editComment}
@@ -1399,7 +1434,7 @@ function fromConvexDocument(row) {
     title: row.title,
     subject: row.subject,
     subjects: row.subjects ?? (row.subject ? [row.subject] : []),
-    format: row.format,
+    format: normalizeMaterialFormatLocal(row.format),
     source: row.source,
     externalUrl: row.externalUrl,
     storagePath: row.storagePath,
@@ -1486,21 +1521,21 @@ function sameStringSetLocal(left = [], right = []) {
 }
 
 function buildToolSubjectsForUser(user, canSeeAll = false) {
-  if (canSeeAll) return [{ id: "sub-matematica-basica", name: "Matematica Basica" }];
+  if (canSeeAll) return [{ id: "sub-matematica-basica", name: "Matemática Básica" }];
   const selectedSubjectCodes = Array.isArray(user?.selectedSubjectCodes)
     ? user.selectedSubjectCodes.filter(Boolean)
     : [];
   if (selectedSubjectCodes.length === 0) return subjects;
   const allowedToolSubjects = [];
   if (selectedSubjectCodes.includes("FBTMM01")) {
-    allowedToolSubjects.push({ id: "sub-matematica-basica", name: "Matematica Basica" });
+    allowedToolSubjects.push({ id: "sub-matematica-basica", name: "Matemática Básica" });
   }
   return allowedToolSubjects.length ? allowedToolSubjects : [{ id: "__sin_herramientas__", name: "Sin herramientas disponibles" }];
 }
 
 function formatSubjectOptionMeta(subject) {
   const careerNames = Array.isArray(subject?.careers)
-    ? subject.careers.map((career) => career.name.replace("Ingenieria ", "")).join(", ")
+    ? subject.careers.map((career) => career.name.replace("Ingeniería ", "")).join(", ")
     : "";
   return [subject?.code, careerNames].filter(Boolean).join(" · ");
 }
@@ -1549,7 +1584,7 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
     : currentUser.careers?.length ? currentUser.careers : [career];
   const allowedCareers = careersData.length
     ? careersData.filter((item) => allowedCareerIds.includes(item.id))
-    : allowedCareerIds.map((id) => ({ id, name: id === "sistemas" ? "Ingenieria de Sistemas" : id }));
+    : allowedCareerIds.map((id) => ({ id, name: id === "sistemas" ? "Ingeniería de Sistemas" : id }));
 
   useEffect(() => {
     if (allowedCareerIds.includes(career)) return;
@@ -1557,23 +1592,36 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
   }, [allowedCareerIds, career]);
 
   useEffect(() => {
-    setOptimisticStatuses(flowData?.statuses ?? {});
+    if (!flowData?.statuses) return;
+    setOptimisticStatuses(flowData.statuses);
   }, [flowData?.id, flowData?.statuses]);
 
   useEffect(() => {
-    if (!canLoadMaterials || materialCatalog.status === "LoadingFirstPage") return;
-    console.info(
-      `[Synapse flow] Flujograma usando ${flowMaterialRows.length} metadatos de materiales, ${formatApproxBytes(estimateJsonBytes(flowMaterialRows))} aprox. No se descargaron PDFs ni imagenes.`,
-    );
-  }, [canLoadMaterials, flowMaterialRows, materialCatalog.status]);
+    if (!flowData?.statuses) return;
+    const courseNames = new Map(flowData.periods.flat().map((course) => [course.code, course.name]));
+    Object.entries(flowData.statuses).forEach(([courseCode, status]) => {
+      const payloadSize = formatApproxBytes(estimateJsonBytes({ [courseCode]: status }));
+      console.info(`[Synapse flow] ${courseNames.get(courseCode) ?? courseCode} · ${payloadSize}`);
+    });
+  }, [flowData?.id, flowData?.statuses, flowData?.periods]);
 
-  async function updateStatus(courseCode, status) {
-    const nextStatuses = { ...optimisticStatuses, [courseCode]: status };
-    setOptimisticStatuses(nextStatuses);
-    if (flowData) {
-      writeConvexCache("flows.getFlow", args, { ...flowData, statuses: nextStatuses });
-    }
-    await setStatus({ userEmail: currentUser.email, career, courseCode, status });
+  async function updateStatus(courseCode, status, courseName = courseCode) {
+    const previousStatus = optimisticStatuses[courseCode] ?? flowData?.statuses?.[courseCode] ?? "Sin estado guardado";
+    setOptimisticStatuses((current) => ({ ...current, [courseCode]: status }));
+    allowedCareerIds.forEach((careerId) => {
+      const careerArgs = { career: careerId, userEmail: currentUser.email };
+      const cachedFlow = readConvexCache("flows.getFlow", careerArgs, { allowStale: true, fallback: null })
+        ?? (careerId === career ? flowData : null);
+      if (!cachedFlow) return;
+      writeConvexCache("flows.getFlow", careerArgs, {
+        ...cachedFlow,
+        statuses: { ...(cachedFlow.statuses ?? {}), [courseCode]: status },
+      });
+    });
+    const result = await setStatus({ userEmail: currentUser.email, career, courseCode, status });
+    const payloadSize = formatApproxBytes(result?.payloadBytes ?? estimateJsonBytes(result));
+    const changeLabel = previousStatus === status ? "sin cambios" : status;
+    console.info(`[Synapse flow] ${courseName}: ${changeLabel} · ${payloadSize}`);
   }
 
   if (!flowData) {
@@ -1583,7 +1631,7 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
           <div>
             <p className="eyebrow">Flujograma</p>
             <h1>Cargando flujograma</h1>
-            <p>Buscando la informacion academica guardada para tu cuenta.</p>
+            <p>Buscando la información académica guardada para tu cuenta.</p>
           </div>
         </div>
       </section>

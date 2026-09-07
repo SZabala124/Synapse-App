@@ -1,11 +1,50 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { assertAdmin } from "./users";
+import { PLAN_PRICES, quarterlyUpgrade, subscriptionEnd, purchaseOptions } from "./paymentPricing";
 
-const PLAN_PRICES = {
-  pro: { monthly: 3, quarterly: 6 },
-  excellence: { monthly: 4, quarterly: 8 },
-};
+async function optionsForUser(ctx, email) {
+  const user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).first();
+  const payment = await latestApproved(ctx, email);
+  return Object.fromEntries(Object.keys(PLAN_PRICES).map((plan) => [plan, purchaseOptions(payment, user?.plan, plan, Date.now())]));
+}
+
+export const billingOptions = query({
+  args: { userEmail: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => await optionsForUser(ctx, normalizeEmail(args.userEmail)),
+});
+
+async function latestApproved(ctx, email) {
+  return await ctx.db.query("paymentRequests")
+    .withIndex("by_user_status_resolved", (q) => q.eq("userEmail", email).eq("status", "approved"))
+    .order("desc").first();
+}
+
+async function upgradeForUser(ctx, email) {
+  const user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).first();
+  return quarterlyUpgrade(await latestApproved(ctx, email), user?.plan, Date.now());
+}
+
+export const quarterlyUpgradeOffer = query({
+  args: { userEmail: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => await upgradeForUser(ctx, normalizeEmail(args.userEmail)),
+});
+
+export const planExpiration = query({
+  args: { userEmail: v.string(), plan: v.string() },
+  returns: v.union(v.number(), v.null()),
+  handler: async (ctx, args) => {
+    if (!["pro", "excellence"].includes(args.plan)) return null;
+    const payment = await ctx.db.query("paymentRequests")
+      .withIndex("by_user_status_resolved", (q) => q.eq("userEmail", normalizeEmail(args.userEmail)).eq("status", "approved"))
+      .order("desc").first();
+    if (!payment?.resolvedAt || payment.plan !== args.plan) return null;
+    return payment.subscriptionEndAt ?? subscriptionEnd(payment.subscriptionStartAt ?? payment.resolvedAt, payment.billingPeriod);
+  },
+});
+
 
 const BANKS = [
   ["0102", "Banco de Venezuela"],
@@ -116,22 +155,30 @@ export const create = mutation({
     userEmail: v.string(),
     userName: v.optional(v.string()),
     plan: v.union(v.literal("pro"), v.literal("excellence")),
-    billingPeriod: v.union(v.literal("monthly"), v.literal("quarterly")),
+    billingPeriod: v.union(v.literal("monthly"), v.literal("bimonthly"), v.literal("quarterly")),
     amountBs: v.number(),
     bcvRate: v.optional(v.number()),
     payerPhone: v.string(),
     bankCode: v.string(),
     referenceLast4: v.string(),
+    basePaymentId: v.optional(v.id("paymentRequests")),
   },
   handler: async (ctx, args) => {
     const userEmail = normalizeEmail(args.userEmail);
-    const amountUsd = PLAN_PRICES[args.plan]?.[args.billingPeriod];
-    if (!amountUsd) throw new Error("Plan de pago invalido.");
-    if (!isVenezuelanPhone(args.payerPhone)) throw new Error("El telefono debe ser venezolano y tener 11 digitos.");
-    if (!/^\d{4}$/.test(args.referenceLast4)) throw new Error("La referencia debe tener exactamente 4 digitos.");
-    if (!Number.isFinite(args.amountBs) || args.amountBs <= 0) throw new Error("El monto en Bs no es valido.");
+    const option = (await optionsForUser(ctx, userEmail))[args.plan]?.[args.billingPeriod];
+    if (!option) throw new Error("No puedes contratar ese período mientras tu plan actual siga activo.");
+    const offer = option.basePaymentId ? option : null;
+    if (args.basePaymentId && offer?.basePaymentId !== args.basePaymentId) {
+      throw new Error("El pago mensual ya no permite esta ampliación. Cierra el pago y revisa tu plan.");
+    }
+    if (offer && !args.basePaymentId) throw new Error("Tienes una ampliación disponible. Actualiza la página para pagar la diferencia.");
+    const amountUsd = offer?.amountUsd ?? PLAN_PRICES[args.plan]?.[args.billingPeriod];
+    if (!amountUsd) throw new Error("Plan de pago inválido.");
+    if (!isVenezuelanPhone(args.payerPhone)) throw new Error("El teléfono debe ser venezolano y tener 11 dígitos.");
+    if (!/^\d{4}$/.test(args.referenceLast4)) throw new Error("La referencia debe tener exactamente 4 dígitos.");
+    if (!Number.isFinite(args.amountBs) || args.amountBs <= 0) throw new Error("El monto en Bs no es válido.");
     const bank = BANKS.find(([code]) => code === args.bankCode);
-    if (!bank) throw new Error("Selecciona un banco valido.");
+    if (!bank) throw new Error("Selecciona un banco válido.");
 
     const activePending = await ctx.db
       .query("paymentRequests")
@@ -149,6 +196,7 @@ export const create = mutation({
       plan: args.plan,
       billingPeriod: args.billingPeriod,
       amountUsd,
+      ...(offer ?? {}),
       bcvRate: normalizeOptionalRate(args.bcvRate),
       amountBs: roundMoney(args.amountBs),
       payerPhone: args.payerPhone.trim(),
@@ -172,6 +220,14 @@ export const approve = mutation({
     if (!payment) throw new Error("Pago no encontrado.");
     if (payment.status !== "pending") throw new Error("Este pago ya fue resuelto.");
 
+    if (payment.basePaymentId) {
+      const latest = await latestApproved(ctx, payment.userEmail);
+      if (latest?._id !== payment.basePaymentId || latest.plan !== payment.plan) {
+        throw new Error("El plan cambió después de reportar esta ampliación. Revisa el pago antes de aprobarlo.");
+      }
+    }
+    const activatedAt = payment.subscriptionStartAt ?? Date.now();
+
     const users = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", payment.userEmail))
@@ -190,6 +246,8 @@ export const approve = mutation({
 
     await ctx.db.patch(args.paymentId, {
       status: "approved",
+      subscriptionStartAt: activatedAt,
+      subscriptionEndAt: payment.subscriptionEndAt ?? subscriptionEnd(activatedAt, payment.billingPeriod),
       adminEmail: normalizeEmail(args.adminEmail),
       resolvedAt: Date.now(),
     });

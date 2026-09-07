@@ -36,7 +36,7 @@ export function RationalizationToolModal({ onClose }) {
       <section className="course-detail-modal truth-tool-modal algebra-tool-modal">
         <header>
           <div>
-            <h2>Racionalizacion</h2>
+            <h2>Racionalización</h2>
             <ToolMetaTags topic="Radicales y conjugados" />
           </div>
           <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
@@ -45,16 +45,16 @@ export function RationalizationToolModal({ onClose }) {
         <div className="truth-tool-layout algebra-tool-layout">
           <form className="truth-tool-form algebra-tool-form">
             <label>
-              Que vas a racionalizar
+              Qué vas a racionalizar
               <select value={mode} onChange={(event) => setMode(event.target.value)}>
-                <option value="auto">Detectar automaticamente</option>
+                <option value="auto">Detectar automáticamente</option>
                 <option value="single-radical">Denominador con una raiz</option>
                 <option value="conjugate">Denominador con conjugado</option>
                 <option value="two-radicals">Dos radicales</option>
               </select>
             </label>
             <label>
-              Fraccion
+              Fracción
               <textarea
                 ref={expressionRef}
                 value={expression}
@@ -63,7 +63,7 @@ export function RationalizationToolModal({ onClose }) {
                 placeholder="Ej: 3/sqrt(2)"
               />
             </label>
-            <div className="truth-operator-row algebra-operator-row" aria-label="Simbolos disponibles">
+            <div className="truth-operator-row algebra-operator-row" aria-label="Símbolos disponibles">
               {["+", "-", "/", "(", ")", "sqrt(", "2", "3", "5"].map((symbol) => (
                 <button type="button" key={symbol} onClick={() => insertSymbol(symbol)}>{symbol}</button>
               ))}
@@ -149,7 +149,7 @@ function rationalizeSingleRadical(fraction) {
 function rationalizeConjugate(fraction, kind = "Denominador con conjugado") {
   const numerator = stripOuterParens(fraction.numerator);
   const denominatorTerms = parseRadicalSum(stripOuterParens(fraction.denominator));
-  if (denominatorTerms.length !== 2) throw new Error("El denominador debe tener dos terminos.");
+  if (denominatorTerms.length !== 2) throw new Error("El denominador debe tener dos términos.");
   const conjugateTerms = [denominatorTerms[0], { ...denominatorTerms[1], coefficient: -denominatorTerms[1].coefficient }];
   const denominatorLatex = termsToLatex(denominatorTerms);
   const conjugateLatex = termsToLatex(conjugateTerms);

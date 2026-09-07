@@ -13,11 +13,12 @@ const navItems = [
   ["profile", "Perfil"],
 ];
 
-export function AppShell({ currentRoute, theme, onThemeChange, isAdmin = false, pendingPaymentCount = 0 }) {
+export function AppShell({ currentRoute, theme, onThemeChange, isAdmin = false, pendingPaymentCount = 0, showPlanExpiration = false, planExpiresAt }) {
   const isDark = theme === "dark";
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuMounted, setMenuMounted] = useState(false);
   const menuCloseTimerRef = useRef(null);
+  const shellRef = useRef(null);
   const visibleNavItems = navItems.filter(([, , scope]) => {
     if (scope === "admin") return isAdmin;
     if (scope === "non-admin") return !isAdmin;
@@ -57,10 +58,19 @@ export function AppShell({ currentRoute, theme, onThemeChange, isAdmin = false, 
     if (menuMounted || menuOpen) closeMenu();
   }, [currentRoute]);
 
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function handleOutsidePointer(event) {
+      if (!shellRef.current?.contains(event.target)) closeMenu();
+    }
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    return () => document.removeEventListener("pointerdown", handleOutsidePointer);
+  }, [menuOpen]);
+
   useEffect(() => () => clearMenuCloseTimer(), []);
 
   return (
-    <header className={menuOpen ? "app-shell is-menu-open" : "app-shell"}>
+    <header ref={shellRef} className={menuOpen ? "app-shell is-menu-open" : "app-shell"}>
       <a className="brand" href="#landing" aria-label="Synapse Academia">
         <img className="brand-logo" src={logoUrl} alt="" aria-hidden="true" />
         <span>
@@ -86,27 +96,31 @@ export function AppShell({ currentRoute, theme, onThemeChange, isAdmin = false, 
         {visibleNavItems.map(([route, label]) => (
           <a key={route} href={`#${route}`} data-route={route} className={currentRoute === route ? "is-active" : ""}>
             <span>{label}</span>
+            {route === "tools" && <span className="nav-beta-badge">Beta</span>}
             {route === "payments" && pendingPaymentCount > 0 && (
               <strong className="nav-notification-badge">{pendingPaymentCount}</strong>
             )}
           </a>
         ))}
+        {showPlanExpiration && !isAdmin && <PlanExpiration expiresAt={planExpiresAt} />}
       </nav>
 
       <nav
         id="primary-navigation"
         className={menuOpen ? "mobile-nav-menu is-visible" : "mobile-nav-menu"}
-        aria-label="Vistas principales moviles"
+        aria-label="Vistas principales móviles"
         aria-hidden={!menuMounted || !menuOpen}
       >
         {visibleNavItems.map(([route, label]) => (
           <a key={route} href={`#${route}`} data-route={route} className={currentRoute === route ? "is-active" : ""}>
             <span>{label}</span>
+            {route === "tools" && <span className="nav-beta-badge">Beta</span>}
             {route === "payments" && pendingPaymentCount > 0 && (
               <strong className="nav-notification-badge">{pendingPaymentCount}</strong>
             )}
           </a>
         ))}
+        {showPlanExpiration && !isAdmin && <PlanExpiration expiresAt={planExpiresAt} />}
       </nav>
 
       <button
@@ -126,4 +140,11 @@ export function AppShell({ currentRoute, theme, onThemeChange, isAdmin = false, 
       </button>
     </header>
   );
+}
+
+function PlanExpiration({ expiresAt, className = "" }) {
+  return <span className={`plan-expiration ${className}`}>
+    <small>Vencimiento</small>
+    <strong>{expiresAt === undefined ? "Cargando..." : expiresAt === null ? "Sin fecha registrada" : new Date(expiresAt).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" })}</strong>
+  </span>;
 }

@@ -38,7 +38,7 @@ export function FactorizationToolModal({ onClose }) {
         <header>
           <div>
             <h2>Factorizacion</h2>
-            <ToolMetaTags topic="Factor comun, agrupacion y trinomios" />
+            <ToolMetaTags topic="Factor común, agrupación y trinomios" />
           </div>
           <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
         </header>
@@ -46,10 +46,10 @@ export function FactorizationToolModal({ onClose }) {
         <div className="truth-tool-layout algebra-tool-layout">
           <form className="truth-tool-form algebra-tool-form">
             <label>
-              Que vas a factorizar
+              Qué vas a factorizar
               <select value={mode} onChange={(event) => setMode(event.target.value)}>
-                <option value="auto">Detectar automaticamente</option>
-                <option value="common-factor">Factor comun</option>
+                <option value="auto">Detectar automáticamente</option>
+                <option value="common-factor">Factor común</option>
                 <option value="grouping">Factorizacion por agrupacion</option>
                 <option value="perfect-square">Trinomio cuadrado perfecto</option>
                 <option value="difference-squares">Diferencia de cuadrados</option>
@@ -66,7 +66,7 @@ export function FactorizationToolModal({ onClose }) {
                 placeholder="Ej: 6x + 12"
               />
             </label>
-            <div className="truth-operator-row algebra-operator-row" aria-label="Simbolos disponibles">
+            <div className="truth-operator-row algebra-operator-row" aria-label="Símbolos disponibles">
               {["+", "-", "^", "/", "(", ")", "x", "a", "b"].map((symbol) => (
                 <button type="button" key={symbol} onClick={() => insertSymbol(symbol)}>{symbol}</button>
               ))}
@@ -113,7 +113,7 @@ function factorExpression(input, requestedMode) {
     if (mode === "perfect-square") return factorPerfectSquare(terms);
     if (mode === "difference-squares") return factorDifferenceSquares(terms);
     if (mode === "quadratic") return factorQuadratic(terms);
-    return { error: "No pude detectar el metodo. Prueba con factor comun, diferencia de cuadrados o un trinomio cuadratico." };
+    return { error: "No pude detectar el método. Prueba con factor común, diferencia de cuadrados o un trinomio cuadrático." };
   } catch (error) {
     return { error: error?.message ?? "No se pudo factorizar la expresion." };
   }
@@ -129,41 +129,41 @@ function detectFactorizationMode(terms) {
 
 function factorCommon(terms) {
   const factor = commonFactor(terms);
-  if (Math.abs(factor.coefficient) === 1 && factor.power === 0) throw new Error("No encontre un factor comun distinto de 1.");
+  if (Math.abs(factor.coefficient) === 1 && factor.power === 0) throw new Error("No encontré un factor común distinto de 1.");
   const inside = terms.map((term) => ({
     coefficient: term.coefficient / factor.coefficient,
     variable: term.variable,
     power: term.power - factor.power,
   }));
   return {
-    kind: "Factor comun",
+    kind: "Factor común",
     answer: `${termToLatex(factor)}(${polynomialToLatex(inside)})`,
     latexAnswer: `${polynomialToLatex(terms)}=${termToLatex(factor)}(${polynomialToLatex(inside)})`,
     steps: [
-      { title: "Buscamos el mayor factor comun", lines: [`MFC=${termToLatex(factor)}`] },
-      { title: "Dividimos cada termino entre el factor comun", lines: inside.map((term, index) => `${termToLatex(terms[index])}\\div ${termToLatex(factor)}=${termToLatex(term)}`) },
+      { title: "Buscamos el mayor factor común", lines: [`MFC=${termToLatex(factor)}`] },
+      { title: "Dividimos cada término entre el factor común", lines: inside.map((term, index) => `${termToLatex(terms[index])}\\div ${termToLatex(factor)}=${termToLatex(term)}`) },
       { title: "Escribimos como producto", lines: [`${termToLatex(factor)}(${polynomialToLatex(inside)})`] },
     ],
   };
 }
 
 function factorByGrouping(terms) {
-  if (terms.length !== 4) throw new Error("La agrupacion necesita cuatro terminos.");
+  if (terms.length !== 4) throw new Error("La agrupación necesita cuatro términos.");
   const firstGroup = terms.slice(0, 2);
   const secondGroup = terms.slice(2, 4);
   const firstFactor = commonFactor(firstGroup);
   const secondFactor = commonFactor(secondGroup);
   const firstInside = firstGroup.map((term) => divideTerm(term, firstFactor));
   const secondInside = secondGroup.map((term) => divideTerm(term, secondFactor));
-  if (polynomialToLatex(firstInside) !== polynomialToLatex(secondInside)) throw new Error("No se formo un binomio comun al agrupar.");
+  if (polynomialToLatex(firstInside) !== polynomialToLatex(secondInside)) throw new Error("No se formó un binomio común al agrupar.");
   return {
     kind: "Factorizacion por agrupacion",
     answer: `(${polynomialToLatex(firstInside)})(${termToLatex(firstFactor)}+${termToLatex(secondFactor)})`.replaceAll("+-", "-"),
     latexAnswer: `${polynomialToLatex(terms)}=(${polynomialToLatex(firstInside)})(${termToLatex(firstFactor)}+${termToLatex(secondFactor)})`.replaceAll("+-", "-"),
     steps: [
       { title: "Agrupamos de dos en dos", lines: [`(${polynomialToLatex(firstGroup)})+(${polynomialToLatex(secondGroup)})`] },
-      { title: "Sacamos factor comun en cada grupo", lines: [`${termToLatex(firstFactor)}(${polynomialToLatex(firstInside)})+${termToLatex(secondFactor)}(${polynomialToLatex(secondInside)})`.replaceAll("+-", "-")] },
-      { title: "Sacamos el binomio comun", lines: [`(${polynomialToLatex(firstInside)})(${termToLatex(firstFactor)}+${termToLatex(secondFactor)})`.replaceAll("+-", "-")] },
+      { title: "Sacamos factor común en cada grupo", lines: [`${termToLatex(firstFactor)}(${polynomialToLatex(firstInside)})+${termToLatex(secondFactor)}(${polynomialToLatex(secondInside)})`.replaceAll("+-", "-")] },
+      { title: "Sacamos el binomio común", lines: [`(${polynomialToLatex(firstInside)})(${termToLatex(firstFactor)}+${termToLatex(secondFactor)})`.replaceAll("+-", "-")] },
     ],
   };
 }
@@ -188,7 +188,7 @@ function factorPerfectSquare(terms) {
         ],
       },
       { title: "Calculamos las raices de los extremos", lines: [`A=${termToLatex(firstRoot)},\\quad B=${termToLatex(lastRoot)}`] },
-      { title: "Verificamos el termino central", lines: [`2AB=2(${termToLatex(firstRoot)})(${termToLatex(lastRoot)})=${termToLatex({ ...ordered[1], coefficient: Math.abs(ordered[1].coefficient) })}`] },
+      { title: "Verificamos el término central", lines: [`2AB=2(${termToLatex(firstRoot)})(${termToLatex(lastRoot)})=${termToLatex({ ...ordered[1], coefficient: Math.abs(ordered[1].coefficient) })}`] },
       { title: "Escribimos el cuadrado", lines: [`(${termToLatex(firstRoot)}${sign}${termToLatex(lastRoot)})^2`] },
     ],
   };
@@ -226,13 +226,13 @@ function factorQuadratic(terms) {
   const c = ordered.find((term) => term.power === 0)?.coefficient ?? 0;
   if (a !== 1) throw new Error("Por ahora el trinomio de segundo grado soporta coeficiente principal 1.");
   const pair = integerPairForSumProduct(b, c);
-  if (!pair) throw new Error("No encontre dos numeros enteros que multipliquen c y sumen b.");
+  if (!pair) throw new Error("No encontré dos números enteros que multipliquen c y sumen b.");
   return {
     kind: "Trinomio de segundo grado",
     answer: `(x${signedNumber(pair[0])})(x${signedNumber(pair[1])})`,
     latexAnswer: `${polynomialToLatex(terms)}=(x${signedNumber(pair[0])})(x${signedNumber(pair[1])})`,
     steps: [
-      { title: "Buscamos dos numeros", lines: [`m\\cdot n=${c},\\quad m+n=${b}`] },
+      { title: "Buscamos dos números", lines: [`m\\cdot n=${c},\\quad m+n=${b}`] },
       { title: "Encontramos la pareja", lines: [`m=${pair[0]},\\quad n=${pair[1]}`] },
       { title: "Armamos los factores", lines: [`(x${signedNumber(pair[0])})(x${signedNumber(pair[1])})`] },
     ],

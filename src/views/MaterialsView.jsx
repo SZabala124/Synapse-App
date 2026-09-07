@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getMaterialImageUrl, getMaterialPdfBlob } from "../services/materialFiles";
 
-const MATERIAL_FORMAT_OPTIONS = ["Guia", "Formulario", "Resumen", "Parcial", "Quiz", "Taller", "Cuaderno de Ejercicios", "PDF", "Presentacion", "Video"];
+const MATERIAL_FORMAT_OPTIONS = ["Guía", "Formulario", "Resumen", "Parcial", "Quiz", "Taller", "Cuaderno de Ejercicios", "PDF", "Presentación", "Video"];
+const MATERIAL_FORMAT_LABELS = new Map([
+  ["Guia", "Guía"],
+  ["Guía", "Guía"],
+  ["Presentacion", "Presentación"],
+  ["Presentación", "Presentación"],
+]);
 
 export function MaterialsView({
   materials,
@@ -45,20 +51,20 @@ export function MaterialsView({
   const [searchDraft, setSearchDraft] = useState(search);
   const loadMoreRef = useRef(null);
   const loadingMoreRef = useRef(false);
-  const formatCounts = countStats ? objectToMap(countStats.formats) : countBy(countMaterials, "format");
+  const formatCounts = normalizeFormatCountMap(countStats ? objectToMap(countStats.formats) : countBy(countMaterials, "format"));
   const levelCounts = countStats ? objectToMap(countStats.levels) : countBy(countMaterials, "level");
   const subjectCounts = countStats ? objectToMap(countStats.subjects) : countByMany(countMaterials, materialSubjectIds);
   const totalMaterials = countStats?.total ?? countMaterials.length;
   const levelTotal = countStats?.levelTotal ?? totalMaterials;
   const formatTotal = countStats?.formatTotal ?? totalMaterials;
   const visibleSubjectTotal = subjects.length;
-  const formatOptions = ["Todos", ...MATERIAL_FORMAT_OPTIONS];
+  const formatOptions = buildFormatOptions(formatCounts);
   const levelOptions = ["Todos", "Gratis", "Pro"];
   const subjectOptions = [
     { value: "Todas", label: "Todas las materias", count: visibleSubjectTotal },
     ...subjects.map((item) => ({ value: item.id, label: subjectName(subjects, item.id), count: subjectCounts.get(item.id) ?? 0 })),
   ];
-  const sortOptions = ["Recientes", "Mas vistos"];
+  const sortOptions = ["Recientes", "Más vistos"];
 
   const [isSentinelIntersecting, setIsSentinelIntersecting] = useState(false);
 
@@ -141,7 +147,7 @@ export function MaterialsView({
         <div className="materials-heading-copy">
           <p className="eyebrow">Biblioteca privada</p>
           <h1>Materiales de estudio</h1>
-          <p>Encuentra guias, evaluaciones y recursos clave en segundos con filtros por materia, formato y nivel.</p>
+          <p>Encuentra guías, evaluaciones y recursos clave en segundos con filtros por materia, formato y nivel.</p>
         </div>
         <div className="library-search">
           <label className="library-search-field library-search-field-wide library-search-field-search">
@@ -174,7 +180,7 @@ export function MaterialsView({
               options={subjectOptions}
               onChange={onSubjectChange}
               searchable
-              searchPlaceholder="Buscar materia o codigo..."
+              searchPlaceholder="Buscar materia o código..."
             />
           </div>
           <div className="library-search-field">
@@ -190,7 +196,7 @@ export function MaterialsView({
       </div>
 
       <div className="material-control-row">
-        <div className="cache-note material-status-note">{remoteStatus}</div>
+        {remoteStatus && <div className="cache-note material-status-note">{remoteStatus}</div>}
         <div className="material-control-actions">
           <button
             className={savedOnly ? "secondary-action material-saved-filter is-active" : "secondary-action material-saved-filter"}
@@ -232,8 +238,8 @@ export function MaterialsView({
             <h3>{savedOnly ? "No tienes materiales guardados" : "No hay materiales disponibles"}</h3>
             <p>
               {savedOnly
-                ? "Marca materiales como guardados para volver a ellos rapidamente desde esta vista."
-                : "Cuando se agreguen materiales, apareceran aqui para encontrarlos rapidamente y guardarlos en tu biblioteca."}
+                ? "Marca materiales como guardados para volver a ellos rápidamente desde esta vista."
+                : "Cuando se agreguen materiales, aparecerán aquí para encontrarlos rápidamente y guardarlos en tu biblioteca."}
             </p>
           </article>
         )}
@@ -363,7 +369,7 @@ function FeatureLimitModal({ prompt, onClose, onContinue }) {
   }
 
   return (
-    <div className="course-detail-overlay is-visible" role="dialog" aria-modal="true">
+    <div className="course-detail-overlay feature-limit-overlay is-visible" role="dialog" aria-modal="true">
       <section className="course-detail-modal feature-limit-modal">
         <header>
           <div>
@@ -463,10 +469,33 @@ function normalizeSelectSearch(value) {
     .trim();
 }
 
+function normalizeMaterialFormat(format) {
+  return MATERIAL_FORMAT_LABELS.get(format) ?? format;
+}
+
+function normalizeFormatCountMap(counts) {
+  const normalized = new Map();
+  for (const [format, count] of counts.entries()) {
+    const normalizedFormat = normalizeMaterialFormat(format);
+    if (!normalizedFormat) continue;
+    normalized.set(normalizedFormat, (normalized.get(normalizedFormat) ?? 0) + count);
+  }
+  return normalized;
+}
+
+function buildFormatOptions(formatCounts) {
+  const knownFormats = new Set(MATERIAL_FORMAT_OPTIONS);
+  const extraFormats = Array.from(formatCounts.keys())
+    .map(normalizeMaterialFormat)
+    .filter((format) => format && !knownFormats.has(format))
+    .sort((left, right) => left.localeCompare(right, "es"));
+  return ["Todos", ...MATERIAL_FORMAT_OPTIONS, ...extraFormats];
+}
+
 function countBy(items, key) {
   const counts = new Map();
   for (const item of items) {
-    const value = item?.[key];
+    const value = key === "format" ? normalizeMaterialFormat(item?.[key]) : item?.[key];
     if (!value) continue;
     counts.set(value, (counts.get(value) ?? 0) + 1);
   }
@@ -599,7 +628,7 @@ function MaterialImagePreview({ storagePath, title, subject }) {
 
   if (!imageUrl) {
     return (
-      <div className="material-card-image material-card-cover-fallback" ref={previewRef} aria-label={`Portada academica de ${subject}`}>
+      <div className="material-card-image material-card-cover-fallback" ref={previewRef} aria-label={`Portada académica de ${subject}`}>
         <span className="cover-page cover-page-a" aria-hidden="true" />
         <span className="cover-page cover-page-b" aria-hidden="true" />
         <span className="cover-mark cover-mark-a" aria-hidden="true" />
@@ -691,7 +720,7 @@ function EditMaterialModal({ material, subjects, onClose, onSubmit, onDelete }) 
     }
 
     if (sourceType === "youtube" && !getYouTubeEmbedUrl(externalUrl)) {
-      setError("Agrega un link valido de YouTube.");
+      setError("Agrega un link válido de YouTube.");
       return;
     }
 
@@ -752,7 +781,7 @@ function EditMaterialModal({ material, subjects, onClose, onSubmit, onDelete }) 
         </header>
         <form className="material-upload-form material-edit-form" onSubmit={handleSubmit}>
           <section className="material-upload-panel material-edit-panel">
-            <p className="material-upload-section-title">Informacion del recurso</p>
+            <p className="material-upload-section-title">Información del recurso</p>
             <label>Titulo<input name="title" type="text" defaultValue={material.title} required /></label>
             <div className="material-edit-grid">
               <label>Tipo de material<select name="format" value={format} onChange={(event) => {
@@ -780,7 +809,7 @@ function EditMaterialModal({ material, subjects, onClose, onSubmit, onDelete }) 
             {sourceType === "pdf" ? (
               <div className="material-upload-file-panel material-edit-file-panel">
                 <label>Reemplazar PDF<input name="file" type="file" accept="application/pdf" required={!hasStoredPdf} /></label>
-                <p>{hasStoredPdf ? `PDF actual: ${material.fileName ?? material.source ?? "archivo guardado"}. Puedes dejarlo vacio para conservarlo.` : "Selecciona el PDF que se abrira dentro de Synapse."}</p>
+                <p>{hasStoredPdf ? `PDF actual: ${material.fileName ?? material.source ?? "archivo guardado"}. Puedes dejarlo vacío para conservarlo.` : "Selecciona el PDF que se abrirá dentro de Synapse."}</p>
                 <label>Reemplazar imagen<input name="imageFile" type="file" accept="image/*" /></label>
               </div>
             ) : (
@@ -822,7 +851,7 @@ function EditMaterialModal({ material, subjects, onClose, onSubmit, onDelete }) 
               <div className={confirmDelete ? "material-delete-zone is-confirming" : "material-delete-zone"}>
                 {confirmDelete ? (
                   <>
-                    <p>Borrar este material tambien quitara sus favoritos y calificaciones.</p>
+                    <p>Borrar este material también quitará sus favoritos y calificaciones.</p>
                     <div className="material-delete-actions">
                       <button className="quiet-button" type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>Cancelar</button>
                       <button className="danger-action" type="button" disabled={busy} onClick={handleDelete}>{busy ? "Borrando..." : "Borrar material"}</button>
@@ -879,7 +908,7 @@ function UploadMaterialModal({ subjects, onClose, onSubmit }) {
       return;
     }
     if (sourceType === "youtube" && !getYouTubeEmbedUrl(externalUrl)) {
-      setError("Agrega un link valido de YouTube.");
+      setError("Agrega un link válido de YouTube.");
       return;
     }
     if (selectedSubjectIds.length === 0) {
@@ -985,7 +1014,7 @@ function SubjectMultiPicker({
     <section className="material-upload-panel material-subject-picker" aria-label="Seleccionar materias">
       <div className="material-subject-picker-head">
         <p className="material-upload-section-title">{title}</p>
-        <label><span>Buscar</span><input value={subjectSearch} onChange={(event) => onSubjectSearchChange(event.target.value)} type="search" placeholder="Codigo, nombre o carrera..." /></label>
+        <label><span>Buscar</span><input value={subjectSearch} onChange={(event) => onSubjectSearchChange(event.target.value)} type="search" placeholder="Código, nombre o carrera..." /></label>
       </div>
       <div className="material-selected-subjects" aria-label="Materias seleccionadas">
         {selectedSubjects.map((subject) => (
@@ -1012,7 +1041,7 @@ function SubjectMultiPicker({
             <small>{formatSubjectMeta(subject)}</small>
           </button>
         ))}
-        {visibleSubjects.length === 0 && <p className="material-subject-empty">No hay mas materias con esa busqueda.</p>}
+        {visibleSubjects.length === 0 && <p className="material-subject-empty">No hay más materias con esa búsqueda.</p>}
       </div>
     </section>
   );
@@ -1237,7 +1266,7 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
                   </div>
                 )}
                 <span>Material alojado externamente</span>
-                <p>Este archivo se abre desde Drive porque puede ser demasiado pesado para previsualizarlo aqui.</p>
+                <p>Este archivo se abre desde Drive porque puede ser demasiado pesado para previsualizarlo aqui. Se recomienda abrirlo con el correo UNIMET.</p>
                 <a className="primary-action" href={material.externalUrl} target="_blank" rel="noreferrer">Ir al archivo en Drive</a>
               </div>
             )}
@@ -1420,13 +1449,13 @@ function PdfCanvasViewer({ blob, title, zoom, onError }) {
           }}
         />
       ))}
-      {pageCount === 0 && <p>Preparando paginas protegidas...</p>}
+      {pageCount === 0 && <p>Preparando páginas protegidas...</p>}
     </div>
   );
 }
 
 function formatSubjectMeta(subject) {
-  return `${subject.code ?? subject.id}${subject.careers?.length ? ` · ${subject.careers.map((career) => career.name.replace("Ingenieria ", "")).join(", ")}` : ""}`;
+  return `${subject.code ?? subject.id}${subject.careers?.length ? ` · ${subject.careers.map((career) => career.name.replace("Ingeniería ", "")).join(", ")}` : ""}`;
 }
 
 function getInitialSourceType(material) {

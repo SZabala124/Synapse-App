@@ -5,23 +5,23 @@ import { RatingSummary } from "./MaterialsView";
 const statusOptions = ["Cursada", "En curso", "Planificada", "Pendiente"];
 const additionalRequirementsByCareer = {
   sistemas: [
-    { code: "BPTDI01", name: "Servicio comunitario", note: "FGTDI01 y 90 creditos requeridos" },
+    { code: "BPTDI01", name: "Servicio comunitario", note: "FGTDI01 y 90 créditos requeridos" },
     { code: "FPTIS04", name: "Defensa de trabajo de grado", note: "FPTSP22 requerido" },
   ],
   mecanica: [
-    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 créditos requeridos" },
     { code: "FPTIM04", name: "Defensa de trabajo de grado", note: "FPTSP22 requerido" },
   ],
   electrica: [
-    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 créditos requeridos" },
     { code: "FPTIE23", name: "Defensa de trabajo de grado", note: "FPTSP22 requerido" },
   ],
   produccion: [
-    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 créditos requeridos" },
     { code: "FPTIP04", name: "Defensa TG", note: "FPTSP22 requerido" },
   ],
   quimica: [
-    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 creditos requeridos" },
+    { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 créditos requeridos" },
     { code: "FPTIQ04", name: "Defensa TG", note: "FPTSP22 requerido" },
   ],
 };
@@ -51,11 +51,11 @@ export function FlowView({
   const credits = completed.reduce((sum, course) => sum + course.credits, 0);
   const totalCredits = allCourses.reduce((sum, course) => sum + course.credits, 0);
   const percent = totalCourses ? Math.round((completed.length / totalCourses) * 100) : 0;
-  const careerOptions = careers.length ? careers : [{ id: selectedCareer, name: flowProgram?.name ?? "Ingenieria de Sistemas" }];
+  const careerOptions = careers.length ? careers : [{ id: selectedCareer, name: flowProgram?.name ?? "Ingeniería de Sistemas" }];
   const canSwitchCareer = careerOptions.length > 1;
   const additionalRequirements = additionalRequirementsByCareer[selectedCareer] ?? [
-    { code: "BPTHE71", name: "Servicio comunitario", note: "90 creditos requeridos" },
-    { code: "FPTSP22", name: "Defensa de trabajo de grado", note: "120 creditos requeridos" },
+    { code: "BPTHE71", name: "Servicio comunitario", note: "90 créditos requeridos" },
+    { code: "FPTSP22", name: "Defensa de trabajo de grado", note: "120 créditos requeridos" },
   ];
 
   useEffect(() => {
@@ -79,13 +79,13 @@ export function FlowView({
 
     if (currentStatus === "Cursada" && nextStatus !== "Cursada" && descendants.length > 0) {
       const confirmed = window.confirm(
-        `Esta materia desbloquea ${descendants.length} materia(s). Si la quitas de cursada, sus materias hijas volveran a pendiente/bloqueadas. Deseas continuar?`,
+        `Esta materia desbloquea ${descendants.length} materia(s). Si la quitas de cursada, sus materias hijas volverán a pendiente/bloqueadas. ¿Deseas continuar?`,
       );
       if (!confirmed) return;
-      descendants.forEach((child) => onStatusChange(courseKey(child), "Pendiente"));
+      descendants.forEach((child) => onStatusChange(courseKey(child), "Pendiente", child.name));
     }
 
-    onStatusChange(courseKey(course), nextStatus);
+    onStatusChange(courseKey(course), nextStatus, course.name);
     setOpenMenu(null);
   }
 
@@ -162,15 +162,15 @@ export function FlowView({
     <section className="workspace">
       <div className="workspace-header">
         <div>
-          <h1>Flujograma academico</h1>
+          <h1>Flujograma académico</h1>
           <p>Consulta materias por periodo, revisa prelaciones y cambia estados desde el tag de cada materia.</p>
         </div>
         <div className="stat-stack flow-stat-stack">
-          <span className="flow-program-chip flow-program-chip-large">{flowProgram?.name ?? "Ingenieria de Sistemas"}</span>
+          <span className="flow-program-chip flow-program-chip-large">{flowProgram?.name ?? "Ingeniería de Sistemas"}</span>
           <div className="flow-progress-metrics">
             <span><strong>{percent}%</strong><small>completado</small></span>
             <span><strong>{completed.length}/{totalCourses}</strong><small>materias cursadas</small></span>
-            <span><strong>{credits}/{totalCredits}</strong><small>creditos cursados</small></span>
+            <span><strong>{credits}/{totalCredits}</strong><small>créditos cursados</small></span>
           </div>
         </div>
       </div>
@@ -184,11 +184,11 @@ export function FlowView({
             </p>
           </div>
           {canSwitchCareer && (
-            <select className="flow-career-select" aria-label="Seleccionar programa" value={selectedCareer} onChange={(event) => onCareerChange?.(event.target.value)}>
-              {careerOptions.map((career) => (
-                <option value={career.id} key={career.id}>{career.name}</option>
-              ))}
-            </select>
+            <CareerSelect
+              options={careerOptions}
+              value={selectedCareer}
+              onChange={(value) => onCareerChange?.(value)}
+            />
           )}
           <div className="flow-status-legend" aria-label="Estados del flujograma">
             <span className="flow-status is-completed">Cursada</span>
@@ -218,21 +218,22 @@ export function FlowView({
                 <strong>Periodo</strong>
               </div>
               <div className="flow-course-list">
-                {courses.map((course) => {
+                {courses.map((course, courseIndex) => {
+                  const renderKey = course.id ?? `${selectedCareer}-${index}-${courseIndex}-${course.code}`;
                   const locked = isLocked(course, flowStatuses, allCourses);
                   const status = locked ? "Bloqueada" : (flowStatuses[courseKey(course)] ?? course.status);
                   const rawStatus = flowStatuses[courseKey(course)] ?? course.status;
                   return (
                     <article
                       className={`flow-course-card ${statusClass(status)}`}
-                      key={courseKey(course)}
+                      key={renderKey}
                       onClick={() => handleCardClick(course, locked)}
                       tabIndex={0}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") handleCardClick(course, locked);
                       }}
                     >
-                      <span className="flow-prereq">{course.prereq || "Sin prelacion"}</span>
+                      <span className="flow-prereq">{course.prereq || "Sin prelación"}</span>
                       <strong className="flow-course-code">{course.code}</strong>
                       <h3 className="flow-course-name">{course.name}</h3>
                       <div className="flow-card-tags">
@@ -247,12 +248,12 @@ export function FlowView({
                               return;
                             }
                             const rect = event.currentTarget.getBoundingClientRect();
-                            setOpenMenu({ key: courseKey(course), x: rect.left, y: rect.bottom + 8 });
+                            setOpenMenu({ key: renderKey, x: rect.left, y: rect.bottom + 8 });
                           }}
                         >
                           {status}
                         </button>
-                        {locked && <span className="flow-lock-note">Requiere prelacion</span>}
+                        {locked && <span className="flow-lock-note">Requiere prelación</span>}
                       </div>
                       <div className="flow-hours">
                         <span><b>A</b>{course.hours?.a ?? 4}</span>
@@ -262,7 +263,7 @@ export function FlowView({
                         <span><b>C</b>{course.credits}</span>
                       </div>
 
-                      {openMenu?.key === courseKey(course) && createPortal(
+                      {openMenu?.key === renderKey && createPortal(
                         <StatusMenu
                           x={openMenu.x}
                           y={openMenu.y}
@@ -296,10 +297,10 @@ export function FlowView({
             <h3>Leyenda</h3>
             <dl>
               <div><dt>A</dt><dd>Horas de aula</dd></div>
-              <div><dt>PS</dt><dd>Horas de practicas supervisadas</dd></div>
+              <div><dt>PS</dt><dd>Horas de prácticas supervisadas</dd></div>
               <div><dt>L</dt><dd>Horas de laboratorio</dd></div>
               <div><dt>AA</dt><dd>Horas de aprendizaje autonomo</dd></div>
-              <div><dt>C</dt><dd>Numero de creditos</dd></div>
+              <div><dt>C</dt><dd>Número de créditos</dd></div>
             </dl>
           </section>
         </div>
@@ -321,6 +322,61 @@ export function FlowView({
         document.body,
       )}
     </section>
+  );
+}
+
+function CareerSelect({ options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = options.find((option) => option.id === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  if (!selected) return null;
+
+  return (
+    <div className={open ? "flow-career-select custom-select is-open" : "flow-career-select custom-select"} ref={rootRef}>
+      <button
+        className="custom-select-trigger"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Seleccionar programa"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="custom-select-label">{selected.name}</span>
+        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+      </button>
+      {open && (
+        <div className="custom-select-menu" role="listbox" aria-label="Seleccionar programa">
+          <div className="custom-select-options">
+            {options.map((option) => (
+              <button
+                className={option.id === selected.id ? "custom-select-option is-selected" : "custom-select-option"}
+                type="button"
+                role="option"
+                aria-selected={option.id === selected.id}
+                key={option.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="custom-select-label">{option.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -413,7 +469,7 @@ function CourseModal({ course, status, allCourses, materials, onClose, onOpenMat
               <div><dt>Horas</dt><dd>A {course.hours?.a ?? 4} · PS {course.hours?.ps ?? 0} · L {course.hours?.l ?? 0} · AA {course.hours?.aa ?? 4}</dd></div>
               <div><dt>Periodo sugerido</dt><dd>Segun flujograma activo</dd></div>
               <div>
-                <dt>Prelacion</dt>
+                <dt>Prelación</dt>
                 <dd className="course-detail-scrollline">
                   <span>{prereqText}</span>
                 </dd>
@@ -499,7 +555,7 @@ function missingRequirementDetails(course, statuses, allCourses) {
     const parent = allCourses.find((item) => item.code === code);
     return {
       code,
-      name: parent?.name ?? "Requisito academico",
+      name: parent?.name ?? "Requisito académico",
     };
   });
 }
@@ -547,5 +603,5 @@ function statusClass(status) {
 }
 
 function courseKey(course) {
-  return course.id ?? course.code;
+  return course.code;
 }

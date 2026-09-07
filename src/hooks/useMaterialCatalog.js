@@ -85,14 +85,14 @@ export function useMaterialCatalog({ userEmail, scopeKey, serverRevision = 0, en
     setLocalRevision(nextRevision);
     setNeedsManifest(false);
     writeMaterialCatalog(scopeKey, { revision: nextRevision, rows: nextRows }).catch((error) => {
-      console.warn("No se pudo guardar el catalogo local de materiales.", error);
+      console.warn("No se pudo guardar el catálogo local de materiales.", error);
     });
   }, [manifest, scopeKey, serverRevision]);
 
   useEffect(() => {
     if (!changes) return;
     if (changes.resetRequired) {
-      console.info("[Synapse catalog] Los cambios acumulados requieren resincronizar el catalogo completo.");
+      console.info("[Synapse catalog] Los cambios acumulados requieren resincronizar el catálogo completo.");
       setNeedsManifest(true);
       return;
     }
@@ -105,7 +105,7 @@ export function useMaterialCatalog({ userEmail, scopeKey, serverRevision = 0, en
     setRows(nextRows);
     setLocalRevision(nextRevision);
     writeMaterialCatalog(scopeKey, { revision: nextRevision, rows: nextRows }).catch((error) => {
-      console.warn("No se pudieron guardar los cambios locales del catalogo.", error);
+      console.warn("No se pudieron guardar los cambios locales del catálogo.", error);
     });
   }, [changes, scopeKey, serverRevision]);
 
@@ -114,7 +114,7 @@ export function useMaterialCatalog({ userEmail, scopeKey, serverRevision = 0, en
     setRows(nextRows);
     const revision = revisionRef.current ?? serverRevision;
     writeMaterialCatalog(scopeKey, { revision, rows: nextRows }).catch((error) => {
-      console.warn("No se pudo actualizar el catalogo local de materiales.", error);
+      console.warn("No se pudo actualizar el catálogo local de materiales.", error);
     });
   }, [scopeKey, serverRevision]);
 
@@ -161,7 +161,7 @@ function applyCatalogChanges(rows, changes) {
 
 function logCatalogReuse(catalog) {
   const count = catalog.rows?.length ?? 0;
-  console.info(`[Synapse catalog] Cache local reutilizado: ${count} metadatos, revision ${catalog.revision}. No se descargo el catalogo completo.`);
+  console.info(`[Synapse catalog] Caché local reutilizado: ${count} metadatos, revisión ${catalog.revision}. No se descargó el catálogo completo.`);
 }
 
 function logCatalogDownload(kind, payload, count) {

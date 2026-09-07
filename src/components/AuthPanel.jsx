@@ -17,6 +17,7 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [selectedCareers, setSelectedCareers] = useState([]);
   const [profileFields, setProfileFields] = useState({
     firstName: "",
     lastName: "",
@@ -170,11 +171,16 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
                 <div>
                   {CAREER_OPTIONS.map((career) => (
                     <label key={career.id}>
-                      <input name="careers" type="checkbox" value={career.id} />
+                      <input name="careers" type="checkbox" value={career.id}
+                        checked={selectedCareers.includes(career.id)}
+                        disabled={selectedCareers.length >= 2 && !selectedCareers.includes(career.id)}
+                        onChange={(event) => setSelectedCareers((current) => event.target.checked ? [...current, career.id].slice(0, 2) : current.filter((id) => id !== career.id))}
+                      />
                       <span>{career.name}</span>
                     </label>
                   ))}
                 </div>
+                <small className="career-limit-note">Solo puedes tener 2 carreras a la vez.</small>
               </fieldset>
             </>
           )}
@@ -392,15 +398,16 @@ function readProfileForm(formData) {
 }
 
 function validateProfile(profile) {
-  if (!isSpanishPersonName(profile.firstName)) throw new Error("El nombre solo debe contener letras y tener máximo 15 caracteres.");
-  if (!isSpanishPersonName(profile.lastName)) throw new Error("El apellido solo debe contener letras y tener máximo 15 caracteres.");
+  if (!isSpanishPersonName(profile.firstName)) throw new Error("El nombre debe contener al menos 2 letras; admite espacios y un máximo de 15 caracteres.");
+  if (!isSpanishPersonName(profile.lastName)) throw new Error("El apellido debe contener al menos 2 letras; admite espacios y un máximo de 15 caracteres.");
   if (!/^\d{6,9}$/.test(profile.nationalId)) throw new Error("La cédula debe ser venezolana y contener entre 6 y 9 números.");
   if (!/^0(2\d{2}|4(12|14|16|24|26))\d{7}$/.test(profile.phone)) throw new Error("El teléfono debe ser venezolano. Ejemplo: 04121234567 o 02121234567.");
   if (!profile.careers.length) throw new Error("Selecciona al menos una carrera.");
+  if (new Set(profile.careers).size > 2) throw new Error("Solo puedes seleccionar hasta 2 carreras a la vez.");
 }
 
 function isSpanishPersonName(value) {
-  return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,15}$/.test(value);
+  return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,15}$/.test(value.trim()) && value.replace(/ /g, "").length >= 2;
 }
 
 function normalizePersonName(value) {
@@ -422,7 +429,7 @@ function publicUser(user) {
 }
 
 function onlySpanishLetters(value) {
-  return String(value ?? "").replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, "");
+  return String(value ?? "").replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]/g, "");
 }
 
 function onlyDigits(value) {

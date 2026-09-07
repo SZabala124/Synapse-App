@@ -21,7 +21,7 @@ export const list = query({
     lightweight: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const format = args.format && args.format !== "Todos" ? args.format : undefined;
+    const format = normalizeMaterialFormat(args.format && args.format !== "Todos" ? args.format : undefined);
     const level = args.level && args.level !== "Todos" ? args.level : undefined;
     const subject = args.subject && args.subject !== "Todas" ? args.subject : undefined;
     const rawSearch = String(args.search ?? "").trim();
@@ -40,9 +40,9 @@ export const list = query({
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
 
     const candidateLimit = Math.min(Math.max(limit * 4, limit), 240);
-    const docs = await takeMaterialCandidates(ctx, { sort: args.sort, format, level, search, rawSearch }, candidateLimit);
+    const docs = await takeMaterialCandidates(ctx, { sort: args.sort, format: formatIndexValue(format), level, search, rawSearch }, candidateLimit);
     const filtered = docs.filter((doc) => {
-      const matchesFormat = !format || doc.format === format;
+      const matchesFormat = !format || materialFormatMatches(doc.format, format);
       const matchesLevel = !level || doc.level === level;
       const docSubjects = documentSubjects(doc);
       const matchesSubject = !subject || docSubjects.includes(subject);
@@ -51,7 +51,7 @@ export const list = query({
       const matchesSaved = !args.savedOnly || favoriteIds.has(doc._id);
       return matchesFormat && matchesLevel && matchesSubject && matchesSearch && matchesCareer && matchesSaved;
     });
-    const sorted = args.sort === "Mas vistos"
+    const sorted = isMostViewedSort(args.sort)
       ? [...filtered].sort((left, right) => (right.viewCount ?? 0) - (left.viewCount ?? 0))
       : filtered;
     const limited = sorted.slice(0, limit);
@@ -77,7 +77,7 @@ export const listPage = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
-    const format = args.format && args.format !== "Todos" ? args.format : undefined;
+    const format = normalizeMaterialFormat(args.format && args.format !== "Todos" ? args.format : undefined);
     const level = args.level && args.level !== "Todos" ? args.level : undefined;
     const subject = args.subject && args.subject !== "Todas" ? args.subject : undefined;
     const rawSearch = String(args.search ?? "").trim();
@@ -92,7 +92,7 @@ export const listPage = query({
       : [];
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
     const pageSize = Math.min(Math.max(args.paginationOpts.numItems ?? MATERIALS_CANDIDATE_PAGE_SIZE, 1), MATERIALS_CANDIDATE_PAGE_SIZE);
-    const candidateQuery = await materialCandidatesQuery(ctx, { sort: args.sort, format, level, search, rawSearch });
+    const candidateQuery = await materialCandidatesQuery(ctx, { sort: args.sort, format: formatIndexValue(format), level, search, rawSearch });
     const candidatePage = await candidateQuery.paginate({
       ...args.paginationOpts,
       numItems: pageSize,
@@ -221,7 +221,7 @@ export const facets = query({
     userEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const format = args.format && args.format !== "Todos" ? args.format : undefined;
+    const format = normalizeMaterialFormat(args.format && args.format !== "Todos" ? args.format : undefined);
     const level = args.level && args.level !== "Todos" ? args.level : undefined;
     const subject = args.subject && args.subject !== "Todas" ? args.subject : undefined;
     const rawSearch = String(args.search ?? "").trim();
@@ -244,7 +244,7 @@ export const facets = query({
       : [];
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
     const docs = search
-      ? await takeMaterialCandidates(ctx, { sort: "Recientes", format, level, search, rawSearch }, 240)
+      ? await takeMaterialCandidates(ctx, { sort: "Recientes", format: formatIndexValue(format), level, search, rawSearch }, 240)
       : await ctx.db.query("documents").withIndex("by_created").order("desc").collect();
     const visibleDocs = docs.filter((doc) => {
       const docSubjects = documentSubjects(doc);
@@ -254,7 +254,7 @@ export const facets = query({
       return matchesSearch && matchesCareer && matchesSaved;
     });
     const filteredTotal = visibleDocs.filter((doc) => {
-      const matchesFormat = !format || doc.format === format;
+      const matchesFormat = !format || materialFormatMatches(doc.format, format);
       const matchesLevel = !level || doc.level === level;
       const matchesSubject = !subject || documentSubjects(doc).includes(subject);
       return matchesFormat && matchesLevel && matchesSubject;
@@ -265,12 +265,12 @@ export const facets = query({
       return matchesLevel && matchesSubject;
     });
     const docsForLevelCounts = visibleDocs.filter((doc) => {
-      const matchesFormat = !format || doc.format === format;
+      const matchesFormat = !format || materialFormatMatches(doc.format, format);
       const matchesSubject = !subject || documentSubjects(doc).includes(subject);
       return matchesFormat && matchesSubject;
     });
     const docsForSubjectCounts = visibleDocs.filter((doc) => {
-      const matchesFormat = !format || doc.format === format;
+      const matchesFormat = !format || materialFormatMatches(doc.format, format);
       const matchesLevel = !level || doc.level === level;
       return matchesFormat && matchesLevel;
     });
@@ -322,7 +322,7 @@ function withRatingStats(doc, stats, userRating) {
 }
 
 function orderedDocumentsQuery(ctx, sort, { format, level } = {}) {
-  const isMostViewed = sort === "Mas vistos";
+  const isMostViewed = isMostViewedSort(sort);
   if (format && level) {
     return isMostViewed
       ? ctx.db.query("documents").withIndex("by_format_level_view_count", (q) => q.eq("format", format).eq("level", level)).order("desc")
@@ -341,6 +341,13 @@ function orderedDocumentsQuery(ctx, sort, { format, level } = {}) {
   return isMostViewed
     ? ctx.db.query("documents").withIndex("by_view_count").order("desc")
     : ctx.db.query("documents").withIndex("by_created").order("desc");
+}
+
+function isMostViewedSort(sort) {
+  return String(sort ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase() === "mas vistos";
 }
 
 async function materialCandidatesQuery(ctx, { sort, format, level, search, rawSearch }) {
@@ -381,7 +388,7 @@ async function isSearchIndexReady(ctx) {
 
 function documentMatchesFilters(doc, { format, level, subject, search, allowedSubjects, favoriteIds, savedOnly }) {
   const docSubjects = documentSubjects(doc);
-  const matchesFormat = !format || doc.format === format;
+  const matchesFormat = !format || materialFormatMatches(doc.format, format);
   const matchesLevel = !level || doc.level === level;
   const matchesSubject = !subject || docSubjects.includes(subject);
   const matchesSearch = !search || normalizeSearchText([doc.title, docSubjects.join(" "), doc.format, doc.level, doc.fileName].join(" ")).includes(search);
@@ -585,9 +592,37 @@ function statPairKey(format, level) {
   return `${format ?? ""}::${level ?? ""}`;
 }
 
+function normalizeMaterialFormat(format) {
+  if (format === "Guia" || format === "Guía") return "Guía";
+  if (format === "Presentacion" || format === "Presentación") return "Presentación";
+  return format;
+}
+
+function materialFormatMatches(actualFormat, selectedFormat) {
+  return normalizeMaterialFormat(actualFormat) === normalizeMaterialFormat(selectedFormat);
+}
+
+function formatIndexValue(format) {
+  return format === "Guía" || format === "Presentación" ? undefined : format;
+}
+
 function countStatCombination(stats, format, level) {
-  if (format && level) return stats.formatLevels?.[statPairKey(format, level)] ?? 0;
-  if (format) return stats.formats?.[format] ?? 0;
+  if (format && level) {
+    let total = 0;
+    for (const formatName of Object.keys(stats.formats ?? {})) {
+      if (materialFormatMatches(formatName, format)) {
+        total += stats.formatLevels?.[statPairKey(formatName, level)] ?? 0;
+      }
+    }
+    return total;
+  }
+  if (format) {
+    let total = 0;
+    for (const [formatName, count] of Object.entries(stats.formats ?? {})) {
+      if (materialFormatMatches(formatName, format)) total += count;
+    }
+    return total;
+  }
   if (level) return stats.levels?.[level] ?? 0;
   return stats.total ?? 0;
 }
@@ -605,9 +640,10 @@ function buildFacetResultFromStats(stats, { format, level, subject }) {
   const subjects = {};
 
   for (const formatName of Object.keys(base.formats ?? {})) {
-    formats[formatName] = level
+    const normalizedFormat = normalizeMaterialFormat(formatName);
+    formats[normalizedFormat] = (formats[normalizedFormat] ?? 0) + (level
       ? base.formatLevels?.[statPairKey(formatName, level)] ?? 0
-      : base.formats[formatName] ?? 0;
+      : base.formats[formatName] ?? 0);
   }
   for (const levelName of Object.keys(base.levels ?? {})) {
     levels[levelName] = format
@@ -633,7 +669,7 @@ function buildFacetResultFromStats(stats, { format, level, subject }) {
 function countDocsBy(docs, key) {
   const counts = {};
   for (const doc of docs) {
-    const value = doc?.[key];
+    const value = key === "format" ? normalizeMaterialFormat(doc?.[key]) : doc?.[key];
     if (!value) continue;
     counts[value] = (counts[value] ?? 0) + 1;
   }

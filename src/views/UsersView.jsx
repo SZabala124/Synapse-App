@@ -6,15 +6,20 @@ import { api } from "../../convex/_generated/api";
 const CAREER_LABELS = {
   sistemas: "Sistemas",
   civil: "Civil",
-  mecanica: "Mecanica",
-  electrica: "Electrica",
-  produccion: "Produccion",
-  quimica: "Quimica",
+  mecanica: "Mecánica",
+  electrica: "Eléctrica",
+  produccion: "Producción",
+  quimica: "Química",
 };
 
 export function UsersView({ adminEmail }) {
   const users = useQuery(api.users.listForAdmin, { adminEmail }) ?? [];
   const setUserBlocked = useMutation(api.users.setUserBlocked);
+  const term = useQuery(api.academicTerms.status, { adminEmail });
+  const resetTerm = useMutation(api.academicTerms.reset);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState("");
   const [confirming, setConfirming] = useState(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,7 +44,7 @@ export function UsersView({ adminEmail }) {
     <section className="workspace users-workspace">
       <div className="workspace-header users-header">
         <div className="materials-heading-copy">
-          <p className="eyebrow">Administracion</p>
+          <p className="eyebrow">Administración</p>
           <h1>Usuarios</h1>
           <p>Revisa todas las cuentas registradas, sus datos, planes y estado de acceso dentro de Synapse.</p>
         </div>
@@ -47,6 +52,15 @@ export function UsersView({ adminEmail }) {
           <span>Total usuarios</span>
           <strong>{users.length}</strong>
         </div>
+      </div>
+
+      <div className="users-search-row">
+        <button className="primary-action" type="button" disabled={resetBusy || term === undefined || term?.processing} onClick={() => { setResetError(""); setConfirmReset(true); }}>
+          {term?.processing ? "Reiniciando trimestre..." : "Reseteo de Trimestre"}
+        </button>
+        <span role="status">{term?.processing
+          ? `${term.processed} cuentas reiniciadas`
+          : term ? `Próximo reinicio: ${formatDate(term.resetAt)}` : "El reinicio automático se programa al iniciar el trimestre."}</span>
       </div>
 
       <div className="users-search-row">
@@ -74,7 +88,7 @@ export function UsersView({ adminEmail }) {
         )}
         {users.length > 0 && visibleUsers.length === 0 && (
           <article className="material-empty-state">
-            <h3>No hay usuarios con esa busqueda</h3>
+            <h3>No hay usuarios con esa búsqueda</h3>
             <p>Prueba buscar por nombre, apellido o correo completo.</p>
           </article>
         )}
@@ -96,8 +110,8 @@ export function UsersView({ adminEmail }) {
               </div>
 
               <dl className="user-admin-details">
-                <div><dt>Cedula</dt><dd>{user.nationalId || "Sin registrar"}</dd></div>
-                <div><dt>Telefono</dt><dd>{user.phone || "Sin registrar"}</dd></div>
+                <div><dt>Cédula</dt><dd>{user.nationalId || "Sin registrar"}</dd></div>
+                <div><dt>Teléfono</dt><dd>{user.phone || "Sin registrar"}</dd></div>
                 <div><dt>Carreras</dt><dd>{formatCareers(user.careers)}</dd></div>
                 <div><dt>Materias seleccionadas</dt><dd>{formatSubjects(user.selectedSubjectCodes)}</dd></div>
                 <div><dt>Creado</dt><dd>{formatDate(user.createdAt)}</dd></div>
@@ -119,6 +133,29 @@ export function UsersView({ adminEmail }) {
         })}
       </section>
 
+      {confirmReset && createPortal(
+        <div className="course-detail-overlay subject-edit-confirm-overlay is-visible" role="dialog" aria-modal="true" aria-labelledby="reset-term-title">
+          <section className="course-detail-modal subject-edit-confirm-modal">
+            <header><h2 id="reset-term-title">¿Reiniciar el trimestre?</h2></header>
+            <div className="course-detail-body">
+              <p>Se quitarán las materias seleccionadas y los materiales Pro desbloqueados de todas las cuentas Gratis. Recuperarán sus 2 ediciones de materias.</p>
+              <p>Todas las cuentas Gratis, Pro y Excellence recuperarán su cambio de carreras y conservarán las carreras seleccionadas. Los administradores seguirán sin límite.</p>
+              <p>El próximo reinicio automático será dentro de 3 meses y una semana. Este cambio no se puede deshacer.</p>
+              {resetError && <p className="auth-error" role="alert">{resetError}</p>}
+              <div className="profile-actions">
+                <button className="quiet-button" type="button" disabled={resetBusy} autoFocus onClick={() => setConfirmReset(false)}>Cancelar</button>
+                <button className="primary-action danger-primary" type="button" disabled={resetBusy} onClick={async () => {
+                  setResetBusy(true);
+                  setResetError("");
+                  try { await resetTerm({ adminEmail }); setConfirmReset(false); }
+                  catch (error) { setResetError(error.message ?? "No se pudo reiniciar el trimestre."); }
+                  finally { setResetBusy(false); }
+                }}>{resetBusy ? "Iniciando..." : "Sí, reiniciar trimestre"}</button>
+              </div>
+            </div>
+          </section>
+        </div>, document.body,
+      )}
       {confirming && createPortal(
         <UserBlockConfirmModal
           data={confirming}
@@ -139,7 +176,7 @@ function UserBlockConfirmModal({ data, busy, onCancel, onConfirm }) {
       <section className="course-detail-modal user-block-modal">
         <header>
           <div>
-            <p className="eyebrow">Confirmacion requerida</p>
+            <p className="eyebrow">Confirmación requerida</p>
             <h2>{isBlock ? "Bloquear usuario" : "Desbloquear usuario"}</h2>
             <span>{data.user.email}</span>
           </div>
@@ -147,7 +184,7 @@ function UserBlockConfirmModal({ data, busy, onCancel, onConfirm }) {
         <div className="course-detail-body">
           <p>
             {isBlock
-              ? "Este usuario no podra ver ninguna seccion de la app hasta que sea desbloqueado."
+              ? "Este usuario no podrá ver ninguna sección de la app hasta que sea desbloqueado."
               : "Este usuario recuperara acceso a la app con plan Gratis, salvo que luego se le asigne otro plan."}
           </p>
           <div className="profile-actions">
@@ -190,7 +227,7 @@ function formatCareers(careers = []) {
 }
 
 function formatSubjects(subjectCodes = []) {
-  if (!subjectCodes.length) return "Sin seleccion";
+  if (!subjectCodes.length) return "Sin selección";
   return subjectCodes.join(", ");
 }
 

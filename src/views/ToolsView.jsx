@@ -25,27 +25,27 @@ const toolCatalog = [
     id: "truth-table",
     title: "Tabla de verdad de proposiciones",
     subject: "sub-matematica-basica",
-    type: "Proposiciones Logicas",
-    topic: "Proposiciones Logicas y Tablas de la Verdad",
+    type: "Proposiciones Lógicas",
+    topic: "Proposiciones Lógicas y Tablas de la Verdad",
     status: "Disponible",
     difficulty: "Pro",
     updatedAt: "2026-06-07",
-    description: "Calcula la tabla de verdad completa para proposiciones logicas con 2 a 4 variables.",
+    description: "Calcula la tabla de verdad completa para proposiciones lógicas con 2 a 4 variables.",
   },
   {
     id: "factorization",
-    title: "Factorizacion",
+    title: "Factorización",
     subject: "sub-matematica-basica",
     type: "Algebra",
-    topic: "Factor Comun, Agrupacion y Trinomios",
+    topic: "Factor Común, Agrupación y Trinomios",
     status: "Disponible",
     difficulty: "Pro",
     updatedAt: "2026-06-09",
-    description: "Factoriza expresiones por factor comun, agrupacion, diferencia de cuadrados y trinomios.",
+    description: "Factoriza expresiones por factor común, agrupación, diferencia de cuadrados y trinomios.",
   },
   {
     id: "rationalization",
-    title: "Racionalizacion",
+    title: "Racionalización",
     subject: "sub-matematica-basica",
     type: "Algebra",
     topic: "Radicales y Conjugados",
@@ -56,14 +56,14 @@ const toolCatalog = [
   },
   {
     id: "quadratic-analysis",
-    title: "Analisis grafico de cuadraticas",
+    title: "Análisis gráfico de cuadráticas",
     subject: "sub-matematica-basica",
     type: "Funciones",
     topic: "Parabolas, Vertice, Dominio y Rango",
     status: "Disponible",
     difficulty: "Pro",
     updatedAt: "2026-06-12",
-    description: "Grafica una funcion cuadratica y calcula vertice, eje, concavidad, cortes, dominio, rango e intervalos.",
+    description: "Grafica una función cuadrática y calcula vértice, eje, concavidad, cortes, dominio, rango e intervalos.",
   },
   {
     id: "piecewise-graph",
@@ -74,12 +74,12 @@ const toolCatalog = [
     status: "Disponible",
     difficulty: "Pro",
     updatedAt: "2026-06-12",
-    description: "Crea graficas por tramos con puntos abiertos o cerrados, obtiene sus ecuaciones y revisa inyectividad.",
+    description: "Crea gráficas por tramos con puntos abiertos o cerrados, obtiene sus ecuaciones y revisa inyectividad.",
   },
 ];
 
 const fallbackSubjects = [
-  { id: "sub-matematica-basica", name: "Matematica Basica" },
+  { id: "sub-matematica-basica", name: "Matemática Básica" },
 ];
 
 export function ToolsView({
@@ -184,7 +184,7 @@ export function ToolsView({
         <div className="materials-heading-copy">
           <p className="eyebrow">Calculadoras academicas</p>
           <h1>Herramientas</h1>
-          <p>Calculadoras y asistentes de resolucion para problemas de distintas materias, sin depender de la biblioteca.</p>
+          <p>Calculadoras y asistentes de resolución para problemas de distintas materias, sin depender de la biblioteca.</p>
         </div>
         <div className="library-search">
           <label className="library-search-field library-search-field-wide library-search-field-search">
@@ -216,7 +216,7 @@ export function ToolsView({
         <section className="tool-upgrade-panel" aria-label="Herramientas bloqueadas">
           <p className="eyebrow">Mejora tu plan</p>
           <h2>Las herramientas empiezan en Pro</h2>
-          <p>Tu plan actual tiene 0 usos de herramientas disponibles. Para abrir calculadoras y asistentes academicos, mejora a Pro o Excellence.</p>
+          <p>Tu plan actual tiene 0 usos de herramientas disponibles. Para abrir calculadoras y asistentes académicos, mejora a Pro o Excellence.</p>
           <a className="primary-action" href="#plans">Ver planes</a>
         </section>
       ) : (
@@ -224,7 +224,7 @@ export function ToolsView({
         {visibleTools.length === 0 && (
           <article className="material-empty-state">
             <h3>No hay herramientas con esos filtros</h3>
-            <p>Prueba otra materia o una busqueda mas general.</p>
+          <p>Prueba otra materia o una búsqueda más general.</p>
           </article>
         )}
         {shownTools.map((tool) => {
@@ -296,7 +296,7 @@ function buildToolAccessPrompt(tool, { currentPlan, entitlements, userEmail, con
     return {
       allowed: false,
       title: "Herramienta Pro",
-      message: "Las herramientas no estan incluidas en el plan gratuito. Mejora a Pro para usar hasta 3 herramientas al mes o a Excellence para usarlas sin limites.",
+      message: "Las herramientas no están incluidas en el plan gratuito. Mejora a Pro para usar hasta 3 herramientas al mes o a Excellence para usarlas sin límites.",
       confirmLabel: "Ver planes",
       onConfirm: () => { window.location.hash = "plans"; },
     };
@@ -317,7 +317,7 @@ function buildToolAccessPrompt(tool, { currentPlan, entitlements, userEmail, con
     allowed: false,
     needsConfirmation: true,
     title: "Usar herramienta",
-    message: `Esta herramienta gastara 1 de tus 3 herramientas del mes. Te quedaran ${Math.max(0, remaining - 1)}.`,
+    message: `Esta herramienta gastará 1 de tus 3 herramientas del mes. Te quedarán ${Math.max(0, remaining - 1)}.`,
     confirmLabel: "Usar herramienta",
     onConfirm: async () => {
       if (!userEmail) return;
@@ -357,7 +357,7 @@ function getToolAccessBadge(tool, { currentPlan, entitlements }) {
     return {
       icon: "↯",
       label: `${remaining} usos`,
-      title: `Esta herramienta usara uno de tus cupos mensuales. Te quedan ${remaining} usos.`,
+      title: `Esta herramienta usará uno de tus cupos mensuales. Te quedan ${remaining} usos.`,
       className: "has-access-quota",
     };
   }

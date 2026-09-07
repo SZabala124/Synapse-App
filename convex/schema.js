@@ -4,6 +4,13 @@ import { v } from "convex/values";
 
 export default defineSchema({
   ...authTables,
+  academicTerms: defineTable({
+    key: v.string(),
+    startedAt: v.number(),
+    resetAt: v.number(),
+    processing: v.boolean(),
+    processed: v.number(),
+  }).index("by_key", ["key"]),
   users: defineTable({
     name: v.optional(v.string()),
     image: v.optional(v.string()),
@@ -18,6 +25,10 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     nationalId: v.optional(v.string()),
     careers: v.optional(v.array(v.string())),
+    careerSelectionPeriodStart: v.optional(v.number()),
+    careerSelectionPeriodEnd: v.optional(v.number()),
+    careerSelectionEditsRemaining: v.optional(v.number()),
+    careerSelectionUpdatedAt: v.optional(v.number()),
     subjectSelectionModalSeen: v.optional(v.boolean()),
     selectedSubjectCodes: v.optional(v.array(v.string())),
     subjectSelectionPeriodStart: v.optional(v.number()),
@@ -135,7 +146,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user_career", ["userEmail", "career"])
-    .index("by_user_career_course", ["userEmail", "career", "courseCode"]),
+    .index("by_user_career_course", ["userEmail", "career", "courseCode"])
+    .index("by_user_course", ["userEmail", "courseCode"]),
   comments: defineTable({
     body: v.string(),
     userEmail: v.string(),
@@ -171,8 +183,12 @@ export default defineSchema({
     userEmail: v.string(),
     userName: v.optional(v.string()),
     plan: v.union(v.literal("pro"), v.literal("excellence")),
-    billingPeriod: v.union(v.literal("monthly"), v.literal("quarterly")),
+    billingPeriod: v.union(v.literal("monthly"), v.literal("bimonthly"), v.literal("quarterly")),
     amountUsd: v.number(),
+    basePaymentId: v.optional(v.id("paymentRequests")),
+    creditedUsd: v.optional(v.number()),
+    subscriptionStartAt: v.optional(v.number()),
+    subscriptionEndAt: v.optional(v.number()),
     bcvRate: v.optional(v.number()),
     amountBs: v.number(),
     payerPhone: v.string(),
@@ -185,5 +201,6 @@ export default defineSchema({
     resolvedAt: v.optional(v.number()),
   })
     .index("by_status_created", ["status", "createdAt"])
-    .index("by_user_created", ["userEmail", "createdAt"]),
+    .index("by_user_created", ["userEmail", "createdAt"])
+    .index("by_user_status_resolved", ["userEmail", "status", "resolvedAt"]),
 });

@@ -29,9 +29,9 @@ export function PaymentsView({ adminEmail }) {
     <section className="workspace payments-workspace">
       <div className="workspace-header payments-header">
         <div className="materials-heading-copy">
-          <p className="eyebrow">Administracion</p>
+          <p className="eyebrow">Administración</p>
           <h1>Pagos</h1>
-          <p>Verifica los reportes de pago movil y activa manualmente el plan del usuario cuando coincidan con tu app bancaria.</p>
+          <p>Verifica los reportes de pago móvil y activa manualmente el plan del usuario cuando coincidan con tu app bancaria.</p>
         </div>
         <div className="payments-filter">
           <span>Estado</span>
@@ -43,7 +43,7 @@ export function PaymentsView({ adminEmail }) {
         {payments.length === 0 && (
           <article className="material-empty-state">
             <h3>No hay pagos con este filtro</h3>
-            <p>Cuando un usuario reporte un pago movil, aparecera aqui para revision.</p>
+            <p>Cuando un usuario reporte un pago móvil, aparecerá aquí para revisión.</p>
           </article>
         )}
         {payments.map((payment) => (
@@ -53,7 +53,7 @@ export function PaymentsView({ adminEmail }) {
                 <span className={payment.status === "pending" ? "payment-status is-pending" : `payment-status is-${payment.status}`}>
                   {statusLabel(payment.status)}
                 </span>
-                <h2>{planLabel(payment.plan)} · {payment.billingPeriod === "quarterly" ? "Trimestral" : "Mensual"}</h2>
+                <h2>{planLabel(payment.plan)} · {payment.billingPeriod === "bimonthly" ? "Bimensual" : payment.billingPeriod === "quarterly" ? "Trimestral" : "Mensual"}</h2>
                 <p>{payment.userName || payment.userEmail}</p>
               </div>
               <strong>Bs {formatBs(payment.amountBs)}</strong>
@@ -62,8 +62,9 @@ export function PaymentsView({ adminEmail }) {
               <div><dt>Fecha y hora</dt><dd>{formatDateTime(payment.createdAt)}</dd></div>
               <div><dt>Correo</dt><dd>{payment.userEmail}</dd></div>
               <div><dt>Monto USD</dt><dd>${payment.amountUsd}</dd></div>
+              {payment.basePaymentId && <div><dt>Ampliación de período</dt><dd>Abonado: ${payment.creditedUsd} · Diferencia: ${payment.amountUsd}</dd></div>}
               <div><dt>Tasa BCV</dt><dd>{payment.bcvRate ? `Bs ${formatBs(payment.bcvRate)}` : "No registrada"}</dd></div>
-              <div><dt>Telefono</dt><dd>{payment.payerPhone}</dd></div>
+                <div><dt>Teléfono</dt><dd>{payment.payerPhone}</dd></div>
               <div><dt>Banco</dt><dd>{payment.bankName} ({payment.bankCode})</dd></div>
               <div><dt>Referencia</dt><dd>**** {payment.referenceLast4}</dd></div>
               {payment.resolvedAt && <div><dt>Resuelto</dt><dd>{formatDateTime(payment.resolvedAt)}</dd></div>}
@@ -157,7 +158,7 @@ function PaymentResolveModal({ data, onCancel, onConfirm }) {
       <section className="course-detail-modal payment-resolve-modal">
         <header>
           <div>
-            <p className="eyebrow">Confirmacion requerida</p>
+            <p className="eyebrow">Confirmación requerida</p>
             <h2>{isApproval ? "Aceptar pago" : "Rechazar pago"}</h2>
             <span>{data.payment.userEmail}</span>
           </div>
