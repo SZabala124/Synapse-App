@@ -110,7 +110,7 @@ export function UsersView({ adminEmail }) {
               </div>
 
               <dl className="user-admin-details">
-                <div><dt>Cédula</dt><dd>{user.nationalId || "Sin registrar"}</dd></div>
+                <div><dt>Documento</dt><dd>{user.nationalId || "Sin registrar"}</dd></div>
                 <div><dt>Teléfono</dt><dd>{user.phone || "Sin registrar"}</dd></div>
                 <div><dt>Carreras</dt><dd>{formatCareers(user.careers)}</dd></div>
                 <div><dt>Materias seleccionadas</dt><dd>{formatSubjects(user.selectedSubjectCodes)}</dd></div>

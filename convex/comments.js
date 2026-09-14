@@ -2,6 +2,29 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { isAdmin } from "./users";
 
+const RAPID_MESSAGE_WINDOW_MS = 3 * 60 * 1000;
+const FIRST_COOLDOWN_MS = 10 * 60 * 1000;
+const ESCALATION_WINDOW_MS = 15 * 60 * 1000;
+const ESCALATED_COOLDOWN_MS = 60 * 60 * 1000;
+
+export const getPostingCooldown = query({
+  args: { userEmail: v.string() },
+  handler: async (ctx, args) => {
+    const userEmail = args.userEmail.trim().toLowerCase();
+    if (await isAdmin(ctx, userEmail)) {
+      return { cooldownUntil: 0, isExempt: true };
+    }
+    const limit = await ctx.db
+      .query("commentRateLimits")
+      .withIndex("by_user", (q) => q.eq("userEmail", userEmail))
+      .first();
+    return {
+      cooldownUntil: limit?.cooldownUntil ?? 0,
+      isExempt: false,
+    };
+  },
+});
+
 export const list = query({
   args: {
     userEmail: v.optional(v.string()),
@@ -84,6 +107,7 @@ export const create = mutation({
       .first();
     const authorName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || userEmail;
     const now = Date.now();
+    await registerCommentActivity(ctx, userEmail, now);
 
     return await ctx.db.insert("comments", {
       body,
@@ -96,6 +120,65 @@ export const create = mutation({
     });
   },
 });
+
+async function registerCommentActivity(ctx, userEmail, now) {
+  if (await isAdmin(ctx, userEmail)) return;
+
+  const limit = await ctx.db
+    .query("commentRateLimits")
+    .withIndex("by_user", (q) => q.eq("userEmail", userEmail))
+    .first();
+
+  if ((limit?.cooldownUntil ?? 0) > now) {
+    throw new Error(`Has enviado mensajes muy rápido. Espera ${formatCooldown(limit.cooldownUntil - now)} antes de volver a comentar.`);
+  }
+
+  const inEscalationWindow = Boolean(
+    limit?.cooldownUntil
+      && now >= limit.cooldownUntil
+      && now <= limit.escalationWindowEndsAt,
+  );
+  const recentMessageAt = (limit?.recentMessageAt ?? [])
+    .filter((timestamp) => now - timestamp < RAPID_MESSAGE_WINDOW_MS)
+    .concat(now);
+  let cooldownUntil = inEscalationWindow ? limit.cooldownUntil : 0;
+  let escalationWindowEndsAt = inEscalationWindow ? limit.escalationWindowEndsAt : 0;
+  let messagesAfterCooldown = inEscalationWindow
+    ? (limit?.messagesAfterCooldown ?? 0) + 1
+    : 0;
+
+  if (inEscalationWindow && messagesAfterCooldown >= 2) {
+    cooldownUntil = now + ESCALATED_COOLDOWN_MS;
+    escalationWindowEndsAt = 0;
+    messagesAfterCooldown = 0;
+    recentMessageAt.splice(0, recentMessageAt.length, now);
+  } else if (!inEscalationWindow && recentMessageAt.length >= 3) {
+    cooldownUntil = now + FIRST_COOLDOWN_MS;
+    escalationWindowEndsAt = cooldownUntil + ESCALATION_WINDOW_MS;
+    messagesAfterCooldown = 0;
+    recentMessageAt.splice(0, recentMessageAt.length, now);
+  } else if (inEscalationWindow) {
+    escalationWindowEndsAt = limit.escalationWindowEndsAt;
+  }
+
+  const nextLimit = {
+    userEmail,
+    recentMessageAt,
+    cooldownUntil,
+    escalationWindowEndsAt,
+    messagesAfterCooldown,
+    updatedAt: now,
+  };
+  if (limit) await ctx.db.patch(limit._id, nextLimit);
+  else await ctx.db.insert("commentRateLimits", nextLimit);
+}
+
+function formatCooldown(remainingMs) {
+  const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes} min ${String(seconds).padStart(2, "0")} s` : `${seconds} s`;
+}
 
 export const toggleLike = mutation({
   args: {

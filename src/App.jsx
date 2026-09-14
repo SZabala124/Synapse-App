@@ -10,6 +10,7 @@ import { useMaterialCatalog } from "./hooks/useMaterialCatalog";
 import { deleteMaterialFile, uploadMaterialImage, uploadMaterialPdf } from "./services/materialFiles";
 import { AppShell } from "./components/AppShell";
 import { AuthPanel } from "./components/AuthPanel";
+import { LegalLinks } from "./components/LegalDocuments";
 import { LandingView } from "./views/LandingView";
 import { FlowView } from "./views/FlowView";
 import { MaterialsView } from "./views/MaterialsView";
@@ -251,7 +252,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
   return (
     <>
       <canvas id="study-canvas" aria-hidden="true" />
-      {convexEnabled && <ConvexUserProfileSync currentUser={currentUserWithSubjectSelection} />}
+      {convexEnabled && <ConvexUserProfileSync currentUser={currentUserWithSubjectSelection} onUserUpdate={onUserUpdate} />}
       {isBlockedUser ? (
         <BlockedAccountScreen onSignOut={onSignOut} />
       ) : (
@@ -398,6 +399,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
           )
         )}
       </main>
+      <LegalLinks className="app-legal-links" />
       <div id="toast" className={`toast ${toast ? "is-visible" : ""}`} role="status" aria-live="polite">
         {toast}
       </div>
@@ -1348,8 +1350,9 @@ function formatApproxBytes(bytes) {
   return `${mb.toFixed(mb >= 10 ? 1 : 2)} MB`;
 }
 
-function ConvexUserProfileSync({ currentUser }) {
+function ConvexUserProfileSync({ currentUser, onUserUpdate }) {
   const ensureProfile = useMutation(api.users.ensureProfile);
+  const remoteProfile = useQuery(api.users.getProfile, currentUser?.email ? { email: currentUser.email } : "skip");
 
   useEffect(() => {
     if (!currentUser?.email) return;
@@ -1358,6 +1361,28 @@ function ConvexUserProfileSync({ currentUser }) {
     });
   }, [currentUser, ensureProfile]);
 
+  useEffect(() => {
+    if (!remoteProfile) return;
+    const remoteFields = Object.fromEntries(
+      Object.entries({
+        firstName: remoteProfile.firstName,
+        lastName: remoteProfile.lastName,
+        nationalId: remoteProfile.nationalId,
+        phone: remoteProfile.phone,
+        careers: remoteProfile.careers,
+        plan: remoteProfile.plan,
+      }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+    );
+    const changed = Object.entries(remoteFields).some(([field, value]) =>
+      JSON.stringify(currentUser[field]) !== JSON.stringify(value),
+    );
+    if (!changed) return;
+    const nextUser = { ...currentUser, ...remoteFields };
+    persistLocalUserProfile(nextUser);
+    saveJson(SESSION_KEY, nextUser);
+    onUserUpdate(nextUser);
+  }, [currentUser, onUserUpdate, remoteProfile]);
+
   return null;
 }
 
@@ -1365,6 +1390,7 @@ function ConvexCommentsSection({ currentUser }) {
   const comments = useQuery(api.comments.list, { userEmail: currentUser.email }) ?? [];
   const access = useQuery(api.users.getAccess, { email: currentUser.email });
   const canModerate = access?.userType === "admin";
+  const postingCooldown = useQuery(api.comments.getPostingCooldown, { userEmail: currentUser.email });
   const reports = useQuery(api.comments.listReports, canModerate ? { adminEmail: currentUser.email } : "skip") ?? [];
   const createComment = useMutation(api.comments.create);
   const toggleLike = useMutation(api.comments.toggleLike);
@@ -1415,6 +1441,7 @@ function ConvexCommentsSection({ currentUser }) {
       comments={comments}
       currentUser={currentUser}
       canModerate={canModerate}
+      postingCooldown={postingCooldown}
       reports={reports}
       remoteStatus=""
       onCreateComment={addComment}
@@ -1662,6 +1689,7 @@ function toProfileArgs(user) {
     nationalId: user.nationalId,
     phone: user.phone,
     careers: Array.isArray(user.careers) ? user.careers : undefined,
+    supabaseAuthUserId: user.supabaseAuthUserId,
   };
   return Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined && value !== ""));
 }

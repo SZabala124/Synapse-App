@@ -1,4 +1,5 @@
 import logoUrl from "../../Synapse.svg";
+import { LegalLinks } from "../components/LegalDocuments";
 
 export function PublicLanding({ onAuthClick }) {
   return (
@@ -82,6 +83,7 @@ export function PublicLanding({ onAuthClick }) {
           </button>
         </div>
       </section>
+      <LegalLinks className="public-legal-links" />
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 const REPORT_REASONS = [
@@ -15,6 +15,7 @@ export function CommentsView({
   reports = [],
   currentUser,
   canModerate = false,
+  postingCooldown,
   remoteStatus,
   onCreateComment,
   onToggleLike,
@@ -37,9 +38,30 @@ export function CommentsView({
   const [reportsOpen, setReportsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const cooldownUntil = postingCooldown?.cooldownUntil ?? 0;
+  const cooldownActive = !canModerate && cooldownUntil > currentTime;
+
+  useEffect(() => {
+    if (!cooldownUntil || canModerate) return undefined;
+    setCurrentTime(Date.now());
+    const timer = window.setInterval(() => {
+      const nextTime = Date.now();
+      setCurrentTime(nextTime);
+      if (nextTime >= cooldownUntil) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [canModerate, cooldownUntil]);
+
+  useEffect(() => {
+    if (!cooldownActive) return;
+    setComposerOpen(false);
+    setReplyingTo("");
+  }, [cooldownActive]);
 
   async function submitComment(event) {
     event.preventDefault();
+    if (cooldownActive) return;
     setError("");
     try {
       setBusy(true);
@@ -55,6 +77,7 @@ export function CommentsView({
 
   async function submitReply(event, parentId) {
     event.preventDefault();
+    if (cooldownActive) return;
     setError("");
     const replyBody = replyBodyById[parentId] ?? "";
     try {
@@ -157,11 +180,18 @@ export function CommentsView({
               {!reportsOpen && reports.length > 0 && <span>{reports.length}</span>}
             </button>
           )}
-          <button className="primary-action" type="button" onClick={() => setComposerOpen(true)}>
+          <button className="primary-action" type="button" disabled={cooldownActive} onClick={() => setComposerOpen(true)}>
             Añadir un comentario
           </button>
         </div>
       </div>
+      {!canModerate && (
+        <p className={cooldownActive ? "comment-rate-notice is-cooldown" : "comment-rate-notice"}>
+          {cooldownActive
+            ? `Pausa por actividad rápida. Podrás publicar o responder en ${formatCooldown(cooldownUntil - currentTime)}.`
+            : "Para evitar spam, 3 mensajes en menos de 3 minutos activan una pausa de 10 minutos. Reincidir poco después activa una pausa de 60 minutos."}
+        </p>
+      )}
 
       {canModerate && reportsOpen ? (
         <ReportsPanel reports={reports} busy={busy} error={error} onResolve={resolveReport} onDeleteRequest={setDeletingReportComment} />
@@ -182,6 +212,7 @@ export function CommentsView({
                 replyingTo={replyingTo}
                 replyBodyById={replyBodyById}
                 busy={busy}
+                cooldownActive={cooldownActive}
                 onReplyToggle={(commentId) => setReplyingTo((current) => (current === commentId ? "" : commentId))}
                 onReplyChange={(commentId, nextBody) => setReplyBodyById((current) => ({ ...current, [commentId]: nextBody }))}
                 onReplySubmit={submitReply}
@@ -211,6 +242,7 @@ export function CommentsView({
         <CommentComposerModal
           body={body}
           busy={busy}
+          cooldownActive={cooldownActive}
           error={error}
           onBodyChange={setBody}
           onSubmit={submitComment}
@@ -417,7 +449,7 @@ function DeleteCommentModal({ busy, error, hasReplies, onCancel, onConfirm }) {
   );
 }
 
-function CommentComposerModal({ body, busy, error, onBodyChange, onSubmit, onClose }) {
+function CommentComposerModal({ body, busy, cooldownActive, error, onBodyChange, onSubmit, onClose }) {
   return (
     <div className="course-detail-overlay comment-modal-overlay is-visible" role="dialog" aria-modal="true">
       <section className="course-detail-modal comment-modal">
@@ -440,10 +472,11 @@ function CommentComposerModal({ body, busy, error, onBodyChange, onSubmit, onClo
             maxLength={1200}
             required
             autoFocus
+            disabled={cooldownActive}
           />
           <div className="comment-composer-footer">
             <span>{body.length}/1200</span>
-            <button className="primary-action" type="submit" disabled={busy || body.trim().length < 3}>
+            <button className="primary-action" type="submit" disabled={cooldownActive || busy || body.trim().length < 3}>
               {busy ? "Publicando..." : "Publicar comentario"}
             </button>
           </div>
@@ -461,6 +494,7 @@ function CommentThread({
   replyingTo,
   replyBodyById,
   busy,
+  cooldownActive,
   editingId,
   editingBody,
   onReplyToggle,
@@ -482,6 +516,7 @@ function CommentThread({
         currentUser={currentUser}
         canModerate={canModerate}
         busy={busy}
+        cooldownActive={cooldownActive}
         editingId={editingId}
         editingBody={editingBody}
         onReplyToggle={() => onReplyToggle(comment._id)}
@@ -503,10 +538,11 @@ function CommentThread({
             placeholder="Escribe una respuesta..."
             maxLength={1200}
             required
+            disabled={cooldownActive}
           />
           <div className="comment-composer-footer">
             <span>{(replyBodyById[comment._id] ?? "").length}/1200</span>
-            <button className="secondary-action" type="submit" disabled={busy || (replyBodyById[comment._id] ?? "").trim().length < 3}>
+            <button className="secondary-action" type="submit" disabled={cooldownActive || busy || (replyBodyById[comment._id] ?? "").trim().length < 3}>
               Responder
             </button>
           </div>
@@ -522,6 +558,7 @@ function CommentThread({
               currentUser={currentUser}
               canModerate={canModerate}
               busy={busy}
+              cooldownActive={cooldownActive}
               replyingTo={replyingTo}
               replyBodyById={replyBodyById}
               editingId={editingId}
@@ -550,6 +587,7 @@ function CommentBody({
   currentUser,
   canModerate,
   busy,
+  cooldownActive,
   editingId,
   editingBody,
   onReplyToggle,
@@ -609,7 +647,7 @@ function CommentBody({
             <strong>Me gusta</strong>
             <em>{comment.likeCount ?? 0}</em>
           </button>
-          <button className="small-action" type="button" onClick={onReplyToggle}>
+          <button className="small-action" type="button" disabled={cooldownActive} onClick={onReplyToggle}>
             Responder
           </button>
           {canEdit && !isEditing && (
@@ -644,6 +682,13 @@ function initials(value) {
 
 function formatDate(value) {
   return new Intl.DateTimeFormat("es", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value));
+}
+
+function formatCooldown(remainingMs) {
+  const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes} min ${String(seconds).padStart(2, "0")} s` : `${seconds} s`;
 }
 
 function hasNestedReplies(comment) {

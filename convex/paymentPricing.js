@@ -15,15 +15,25 @@ export function subscriptionEnd(start, billingPeriod) {
 }
 
 export function quarterlyUpgrade(payment, currentPlan, now, targetPeriod = "quarterly") {
+  return upgradeOffer(payment, currentPlan, currentPlan, now, targetPeriod);
+}
+
+function upgradeOffer(payment, currentPlan, targetPlan, now, targetPeriod) {
   if (!payment || payment.status !== "approved" || payment.plan !== currentPlan
-    || !(PERIOD_MONTHS[payment.billingPeriod] < PERIOD_MONTHS[targetPeriod]) || !payment.resolvedAt || !PLAN_PRICES[currentPlan]) return null;
+    || !(PERIOD_MONTHS[payment.billingPeriod] <= PERIOD_MONTHS[targetPeriod]) || !payment.resolvedAt
+    || !PLAN_PRICES[currentPlan] || !PLAN_PRICES[targetPlan]) return null;
+  if (currentPlan === targetPlan && payment.billingPeriod === targetPeriod) return null;
   const start = payment.subscriptionStartAt ?? payment.resolvedAt;
   if ((payment.subscriptionEndAt ?? subscriptionEnd(start, payment.billingPeriod)) <= now) return null;
-  const credit = Math.min(payment.amountUsd + (payment.creditedUsd ?? 0), PLAN_PRICES[currentPlan][payment.billingPeriod]);
+  // An active subscription always contributes its listed value, independent of
+  // referral or accumulated discounts used when it was originally purchased.
+  const credit = PLAN_PRICES[currentPlan][payment.billingPeriod];
   if (!Number.isFinite(credit) || credit <= 0) return null;
+  const amountUsd = Math.round((PLAN_PRICES[targetPlan][targetPeriod] - credit) * 100) / 100;
+  if (amountUsd <= 0) return null;
   return {
     basePaymentId: payment._id,
-    amountUsd: Math.round((PLAN_PRICES[currentPlan][targetPeriod] - credit) * 100) / 100,
+    amountUsd,
     creditedUsd: credit,
     subscriptionStartAt: start,
     subscriptionEndAt: subscriptionEnd(start, targetPeriod),
@@ -40,8 +50,7 @@ export function purchaseOptions(payment, currentPlan, targetPlan, now) {
   return Object.fromEntries(Object.entries(PLAN_PRICES[targetPlan]).map(([period, amountUsd]) => {
     if (active && (PERIOD_MONTHS[period] < PERIOD_MONTHS[payment.billingPeriod]
       || (currentPlan === targetPlan && period === payment.billingPeriod))) return [period, null];
-    return [period, currentPlan === targetPlan
-      ? quarterlyUpgrade(payment, currentPlan, now, period) ?? { amountUsd }
-      : { amountUsd }];
+    if (!active) return [period, { amountUsd }];
+    return [period, upgradeOffer(payment, currentPlan, targetPlan, now, period)];
   }));
 }

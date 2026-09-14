@@ -11,10 +11,13 @@
 import type * as academicTerms from "../academicTerms.js";
 import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
+import type * as devices from "../devices.js";
 import type * as documents from "../documents.js";
 import type * as flowData from "../flowData.js";
 import type * as flows from "../flows.js";
 import type * as http from "../http.js";
+import type * as loginLimits from "../loginLimits.js";
+import type * as passwordRecovery from "../passwordRecovery.js";
 import type * as paymentPricing from "../paymentPricing.js";
 import type * as payments from "../payments.js";
 import type * as users from "../users.js";
@@ -29,10 +32,13 @@ declare const fullApi: ApiFromModules<{
   academicTerms: typeof academicTerms;
   auth: typeof auth;
   comments: typeof comments;
+  devices: typeof devices;
   documents: typeof documents;
   flowData: typeof flowData;
   flows: typeof flows;
   http: typeof http;
+  loginLimits: typeof loginLimits;
+  passwordRecovery: typeof passwordRecovery;
   paymentPricing: typeof paymentPricing;
   payments: typeof payments;
   users: typeof users;

@@ -16,6 +16,7 @@ export default defineSchema({
     image: v.optional(v.string()),
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
+    supabaseAuthUserId: v.optional(v.string()),
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
@@ -24,6 +25,11 @@ export default defineSchema({
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     nationalId: v.optional(v.string()),
+    referralCode: v.optional(v.string()),
+    nextPaymentDiscountPercent: v.optional(v.number()),
+    nextPaymentDiscountToken: v.optional(v.string()),
+    referralMaterialBonus: v.optional(v.number()),
+    referralMaterialBonusEndsAt: v.optional(v.number()),
     careers: v.optional(v.array(v.string())),
     careerSelectionPeriodStart: v.optional(v.number()),
     careerSelectionPeriodEnd: v.optional(v.number()),
@@ -43,6 +49,7 @@ export default defineSchema({
     toolUses: v.optional(v.array(v.string())),
   })
     .index("email", ["email"])
+    .index("by_referral_code", ["referralCode"])
     .index("phone", ["phone"]),
   appUsers: defineTable({
     email: v.string(),
@@ -50,6 +57,26 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_email", ["email"]),
+  dailyLoginLimits: defineTable({
+    email: v.string(),
+    day: v.string(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_email", ["email"]),
+  passwordRecoveryAttempts: defineTable({
+    email: v.string(),
+    windowStartedAt: v.number(),
+    count: v.number(),
+  }).index("by_email", ["email"]),
+  accountDevices: defineTable({
+    userEmail: v.string(),
+    deviceId: v.string(),
+    label: v.string(),
+    createdAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_user", ["userEmail"])
+    .index("by_user_device", ["userEmail", "deviceId"]),
   documents: defineTable({
     title: v.string(),
     searchTitle: v.optional(v.string()),
@@ -179,6 +206,14 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_comment", ["commentId"])
     .index("by_reporter_comment", ["reporterEmail", "commentId"]),
+  commentRateLimits: defineTable({
+    userEmail: v.string(),
+    recentMessageAt: v.array(v.number()),
+    cooldownUntil: v.number(),
+    escalationWindowEndsAt: v.number(),
+    messagesAfterCooldown: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userEmail"]),
   paymentRequests: defineTable({
     userEmail: v.string(),
     userName: v.optional(v.string()),
@@ -189,6 +224,12 @@ export default defineSchema({
     creditedUsd: v.optional(v.number()),
     subscriptionStartAt: v.optional(v.number()),
     subscriptionEndAt: v.optional(v.number()),
+    referralCode: v.optional(v.string()),
+    referrerEmail: v.optional(v.string()),
+    priceBeforeDiscountUsd: v.optional(v.number()),
+    appliedDiscountPercent: v.optional(v.number()),
+    appliedDiscountToken: v.optional(v.string()),
+    referralDiscountPercent: v.optional(v.number()),
     bcvRate: v.optional(v.number()),
     amountBs: v.number(),
     payerPhone: v.string(),
@@ -202,5 +243,6 @@ export default defineSchema({
   })
     .index("by_status_created", ["status", "createdAt"])
     .index("by_user_created", ["userEmail", "createdAt"])
+    .index("by_user_referrer_status", ["userEmail", "referrerEmail", "status"])
     .index("by_user_status_resolved", ["userEmail", "status", "resolvedAt"]),
 });

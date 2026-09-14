@@ -46,6 +46,11 @@ const mecanicaFirstPeriods = [
   ],
 ];
 
+// Legacy course codes that now refer to the shared course code.
+export const COURSE_CODE_ALIASES = {
+  FPTMI21: "FPTM21",
+};
+
 export const flowPrograms = [
   {
     id: "sistemas",
@@ -93,7 +98,7 @@ export const flowPrograms = [
         course("FPTSP28", "Sistemas Distribuidos", "BPTSP03"),
         course("FPTSP21", "Modelacion de Sistemas en Redes", "BPTPS06"),
         course("FPTSP20", "Simulación", "BPTMI06"),
-        course("FPTM21", "Modelos Estocasticos", "BPTMI06"),
+        course("FPTM21", "Modelos Estocásticos", "BPTMI06"),
         course("FPTSP22", "Taller de Trabajo de Grado", "120 CR o 57 CBP", { a: 2, ps: 2, credits: 3 }),
       ],
       [
@@ -419,7 +424,7 @@ export const flowPrograms = [
       ],
       [
         course("FPTPI12", "Gestion de la cadena de suministro II", "FPTPI09"),
-        course("FPTMI21", "Modelos estocásticos", "BPTMI06"),
+        course("FPTM21", "Modelos Estocásticos", "BPTMI06"),
         course("FPTPI02", "Mantenimiento", "BPTMI06"),
         course("FPTSP22", "Taller de trabajo de grado", "120 cred. o 57 cred. BP", { a: 2, ps: 2 }),
         course("FPTPI06", "Procesos de Fabricacion I", "BPTPI06"),

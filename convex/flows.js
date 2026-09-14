@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { flowPrograms } from "./flowData";
+import { COURSE_CODE_ALIASES, flowPrograms } from "./flowData";
 
 export const listCareers = query({
   args: {},
@@ -194,10 +194,15 @@ function withCourseIds(program) {
 
 function canonicalCourseCode(value) {
   const raw = String(value ?? "").trim();
+  const legacyCode = Object.keys(COURSE_CODE_ALIASES)
+    .find((code) => raw === code || raw.endsWith(`-${code}`));
+  const normalizedRaw = legacyCode
+    ? `${raw.slice(0, -legacyCode.length)}${COURSE_CODE_ALIASES[legacyCode]}`
+    : raw;
   const match = flowPrograms
     .flatMap((program) => program.periods.flat())
-    .find((course) => raw === course.code || raw.endsWith(`-${course.code}`));
-  return match?.code ?? raw;
+    .find((course) => normalizedRaw === course.code || normalizedRaw.endsWith(`-${course.code}`));
+  return match?.code ?? normalizedRaw;
 }
 
 function normalizeEmail(email) {

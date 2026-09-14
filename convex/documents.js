@@ -565,17 +565,19 @@ function cloneLibraryStats(stats) {
 
 function applyDocumentToStats(stats, document, delta) {
   if (!document) return;
+  const formatKey = statDimensionKey(document.format);
+  const levelKey = statDimensionKey(document.level);
   stats.total = Math.max(0, stats.total + delta);
-  adjustCount(stats.formats, document.format, delta);
-  adjustCount(stats.levels, document.level, delta);
-  adjustCount(stats.formatLevels, statPairKey(document.format, document.level), delta);
+  adjustCount(stats.formats, formatKey, delta);
+  adjustCount(stats.levels, levelKey, delta);
+  adjustCount(stats.formatLevels, statPairKey(formatKey, levelKey), delta);
   for (const subject of documentSubjects(document)) {
     adjustCount(stats.subjects, subject, delta);
     const detail = stats.subjectDetails[subject] ?? { total: 0, formats: {}, levels: {}, formatLevels: {} };
     detail.total = Math.max(0, detail.total + delta);
-    adjustCount(detail.formats, document.format, delta);
-    adjustCount(detail.levels, document.level, delta);
-    adjustCount(detail.formatLevels, statPairKey(document.format, document.level), delta);
+    adjustCount(detail.formats, formatKey, delta);
+    adjustCount(detail.levels, levelKey, delta);
+    adjustCount(detail.formatLevels, statPairKey(formatKey, levelKey), delta);
     if (detail.total === 0) delete stats.subjectDetails[subject];
     else stats.subjectDetails[subject] = detail;
   }
@@ -589,7 +591,14 @@ function adjustCount(counts, key, delta) {
 }
 
 function statPairKey(format, level) {
-  return `${format ?? ""}::${level ?? ""}`;
+  return `${statDimensionKey(format)}::${statDimensionKey(level)}`;
+}
+
+function statDimensionKey(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
 function normalizeMaterialFormat(format) {

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import { useMutation } from "convex/react";
+import { useEffect, useRef, useState } from "react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import logoUrl from "../../Synapse.svg";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
+import { SignupTermsModal } from "./LegalDocuments";
 
 const CAREER_OPTIONS = [
   { id: "sistemas", name: "Ingeniería de Sistemas" },
@@ -17,6 +19,10 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [submitAfterTerms, setSubmitAfterTerms] = useState(false);
+  const formRef = useRef(null);
   const [selectedCareers, setSelectedCareers] = useState([]);
   const [profileFields, setProfileFields] = useState({
     firstName: "",
@@ -32,11 +38,20 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
     resetPassword: "",
     resetConfirmPassword: "",
   });
-  const recoverLocalAccess = useMutation(api.users.recoverLocalAccess);
+  const recordLogin = useMutation(api.loginLimits.record);
+  const resetCentralPassword = useAction(api.passwordRecovery.reset);
 
   useEffect(() => {
     setMode(initialMode);
+    setTermsAccepted(false);
+    setTermsOpen(false);
   }, [initialMode]);
+
+  useEffect(() => {
+    if (!termsAccepted || !submitAfterTerms) return;
+    setSubmitAfterTerms(false);
+    formRef.current?.requestSubmit();
+  }, [submitAfterTerms, termsAccepted]);
 
   async function handlePassword(event) {
     event.preventDefault();
@@ -45,6 +60,10 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
     const formData = new FormData(event.currentTarget);
     if (mode === "signUp" && formData.get("password") !== formData.get("confirmPassword")) {
       setError("Las contraseñas no coinciden.");
+      return;
+    }
+    if (mode === "signUp" && !termsAccepted) {
+      setTermsOpen(true);
       return;
     }
     if (mode === "forgotPassword" && formData.get("resetPassword") !== formData.get("resetConfirmPassword")) {
@@ -59,9 +78,9 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
       if (mode === "forgotPassword") {
         const nextPassword = String(formData.get("resetPassword"));
         const nationalId = String(formData.get("resetNationalId"));
-        const recoveredProfile = convexEnabled
-          ? await recoverLocalAccess({ email, nationalId })
-          : null;
+        if (!convexEnabled) throw new Error("La recuperación segura no está disponible.");
+        const recovery = await resetCentralPassword({ email, nationalId, password: nextPassword });
+        const recoveredProfile = recovery.profile;
         resetLocalPassword(email, nationalId, nextPassword, recoveredProfile);
         setAuthFields((current) => ({
           ...current,
@@ -77,10 +96,31 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
         return;
       }
       const password = String(formData.get("password"));
-      const user = mode === "signUp" ? createLocalAccount(email, password, readProfileForm(formData)) : signInLocalAccount(email, password);
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error("El acceso centralizado todavía no está configurado.");
+      }
+      let user;
+      if (mode === "signUp") {
+        const profile = readProfileForm(formData);
+        validateProfile(profile);
+        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+        if (signUpError) throw signUpError;
+        if (!data.session) throw new Error("Supabase todavía requiere confirmar el correo. Desactiva Confirm Email antes de crear cuentas.");
+        user = { ...createLocalAccount(email, password, profile), supabaseAuthUserId: data.user?.id };
+        await supabase.auth.signOut({ scope: "local" });
+      } else {
+        user = await authenticateWithPassword(email, password);
+        const dailyLogin = await recordLogin({ email: user.email });
+        console.info(
+          dailyLogin.isExempt
+            ? `[Synapse acceso] ${user.email}: administrador, sin límite diario de inicios de sesión.`
+            : `[Synapse acceso] ${user.email}: ${dailyLogin.count}/${dailyLogin.limit} inicios de sesión hoy.`,
+        );
+        await supabase.auth.signOut({ scope: "local" });
+      }
       onAuthSuccess(user);
     } catch (authError) {
-      setError(authError?.message ?? "No se pudo completar el acceso.");
+      setError(readableAuthError(authError));
     } finally {
       setSubmitting(false);
     }
@@ -101,11 +141,12 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
         <h1>{mode === "signIn" ? "Inicia sesión" : mode === "signUp" ? "Crea tu cuenta" : "Recupera tu contraseña"}</h1>
         <p>
           {mode === "forgotPassword"
-            ? "Confirma tu correo y tu cédula para definir una contraseña nueva en este navegador."
-            : "Accede con correo y contraseña. Google lo dejamos para una siguiente etapa."}
+            ? "Confirma tu correo y tu cédula o carnet universitario para definir una contraseña nueva en este navegador."
+            : "Accede con correo y contraseña. Puedes iniciar sesión un máximo de 3 veces al día."}
         </p>
 
-        <form className="auth-form" onSubmit={handlePassword}>
+        <form ref={formRef} className="auth-form" onSubmit={handlePassword}>
+          <>
           {mode === "signUp" && (
             <>
               <div className="auth-form-grid">
@@ -138,16 +179,16 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
               </div>
               <div className="auth-form-grid">
                 <label>
-                  Cédula venezolana
+                  Cédula o Carnet Universitario
                   <input
                     name="nationalId"
                     type="text"
                     inputMode="numeric"
                     value={profileFields.nationalId}
-                    onChange={(event) => updateProfileField("nationalId", onlyDigits(event.target.value).slice(0, 9))}
-                    placeholder="12345678"
+                    onChange={(event) => updateProfileField("nationalId", onlyDigits(event.target.value).slice(0, 12))}
+                    placeholder="123456789012"
                     autoComplete="off"
-                    maxLength={9}
+                    maxLength={12}
                     required
                   />
                 </label>
@@ -229,16 +270,16 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
           {mode === "forgotPassword" && (
             <>
               <label>
-                Cédula venezolana
+                Cédula o Carnet Universitario
                 <input
                   name="resetNationalId"
                   type="text"
                   inputMode="numeric"
                   value={authFields.resetNationalId}
-                  onChange={(event) => updateAuthField("resetNationalId", onlyDigits(event.target.value).slice(0, 9))}
-                  placeholder="12345678"
+                  onChange={(event) => updateAuthField("resetNationalId", onlyDigits(event.target.value).slice(0, 12))}
+                  placeholder="123456789012"
                   autoComplete="off"
-                  maxLength={9}
+                  maxLength={12}
                   required
                 />
               </label>
@@ -268,6 +309,7 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
               </label>
             </>
           )}
+          </>
 
           <button className="primary-action form-submit" type="submit" disabled={submitting}>
             {submitting ? "Procesando..." : mode === "signIn" ? "Entrar" : mode === "signUp" ? "Registrarme" : "Actualizar contraseña"}
@@ -308,6 +350,16 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
         {notice && <p className="auth-notice">{notice}</p>}
         {error && <p className="auth-error">{error}</p>}
       </section>
+      {termsOpen && (
+        <SignupTermsModal
+          onClose={() => setTermsOpen(false)}
+          onAccept={() => {
+            setTermsAccepted(true);
+            setTermsOpen(false);
+            setSubmitAfterTerms(true);
+          }}
+        />
+      )}
     </main>
   );
 
@@ -322,7 +374,33 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
   function switchMode(nextMode) {
     setError("");
     setNotice("");
+    setTermsAccepted(false);
+    setTermsOpen(false);
     setMode(nextMode);
+  }
+
+  async function authenticateWithPassword(email, password) {
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (!signInError && data.user?.email) {
+      return { email: data.user.email.toLowerCase(), createdAt: Date.now(), supabaseAuthUserId: data.user.id };
+    }
+    if (!isInvalidCredentialError(signInError)) throw signInError;
+
+    let localUser;
+    try {
+      localUser = signInLocalAccount(email, password);
+    } catch {
+      throw new Error("Correo o contraseña incorrectos.");
+    }
+
+    const { data: migration, error: migrationError } = await supabase.auth.signUp({ email, password });
+    if (migrationError) {
+      throw new Error("La contraseña no coincide con la cuenta ya migrada. Usa la contraseña más reciente.");
+    }
+    if (!migration.session) {
+      throw new Error("Supabase todavía requiere confirmar el correo. Desactiva Confirm Email antes de iniciar sesión.");
+    }
+    return { ...localUser, supabaseAuthUserId: migration.user?.id };
   }
 }
 
@@ -366,8 +444,8 @@ function resetLocalPassword(email, nationalId, nextPassword, recoveredProfile = 
   if (!normalizedEmail) throw new Error("Escribe un correo válido.");
   if (nextPassword.length < 8) throw new Error("La contraseña debe tener mínimo 8 caracteres.");
   const normalizedNationalId = normalizeNationalId(nationalId);
-  if (!/^\d{6,9}$/.test(normalizedNationalId)) {
-    throw new Error("La cédula debe ser venezolana y contener entre 6 y 9 números.");
+  if (!/^\d{6,12}$/.test(normalizedNationalId)) {
+    throw new Error("La cédula o el carnet universitario debe contener entre 6 y 12 números.");
   }
 
   const users = readUsers();
@@ -375,7 +453,7 @@ function resetLocalPassword(email, nationalId, nextPassword, recoveredProfile = 
   const baseUser = localUser ?? recoveredProfile;
   if (!baseUser) throw new Error("No encontramos una cuenta con ese correo.");
   if (normalizeNationalId(baseUser.nationalId) !== normalizedNationalId) {
-    throw new Error("La cédula no coincide con la cuenta registrada.");
+    throw new Error("El documento no coincide con la cuenta registrada.");
   }
 
   users[normalizedEmail] = {
@@ -400,7 +478,7 @@ function readProfileForm(formData) {
 function validateProfile(profile) {
   if (!isSpanishPersonName(profile.firstName)) throw new Error("El nombre debe contener al menos 2 letras; admite espacios y un máximo de 15 caracteres.");
   if (!isSpanishPersonName(profile.lastName)) throw new Error("El apellido debe contener al menos 2 letras; admite espacios y un máximo de 15 caracteres.");
-  if (!/^\d{6,9}$/.test(profile.nationalId)) throw new Error("La cédula debe ser venezolana y contener entre 6 y 9 números.");
+  if (!/^\d{6,12}$/.test(profile.nationalId)) throw new Error("La cédula o el carnet universitario debe contener entre 6 y 12 números.");
   if (!/^0(2\d{2}|4(12|14|16|24|26))\d{7}$/.test(profile.phone)) throw new Error("El teléfono debe ser venezolano. Ejemplo: 04121234567 o 02121234567.");
   if (!profile.careers.length) throw new Error("Selecciona al menos una carrera.");
   if (new Set(profile.careers).size > 2) throw new Error("Solo puedes seleccionar hasta 2 carreras a la vez.");
@@ -415,7 +493,7 @@ function normalizePersonName(value) {
 }
 
 function normalizeNationalId(value) {
-  return onlyDigits(value).slice(0, 9);
+  return onlyDigits(value).slice(0, 12);
 }
 
 function normalizeVenezuelanPhone(value) {
@@ -434,4 +512,14 @@ function onlySpanishLetters(value) {
 
 function onlyDigits(value) {
   return String(value ?? "").replace(/\D/g, "");
+}
+
+function isInvalidCredentialError(error) {
+  return /invalid login credentials|invalid credentials/i.test(String(error?.message ?? ""));
+}
+
+function readableAuthError(error) {
+  const message = String(error?.message ?? "");
+  const serverMessage = message.match(/Uncaught Error:\s*([\s\S]*?)(?:\s+at handler|\s+Called by client|$)/i)?.[1]?.trim();
+  return serverMessage || message || "No se pudo completar el acceso.";
 }

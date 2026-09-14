@@ -67,10 +67,25 @@ export function FlowView({
     }
   }, [flowPeriods, flowStatuses, materials]);
 
+  useEffect(() => {
+    if (!openMenu) return undefined;
+
+    const closeStatusMenu = () => setOpenMenu(null);
+    // Capture catches both the page scroll and the board's horizontal scroll.
+    window.addEventListener("scroll", closeStatusMenu, true);
+    window.addEventListener("resize", closeStatusMenu);
+
+    return () => {
+      window.removeEventListener("scroll", closeStatusMenu, true);
+      window.removeEventListener("resize", closeStatusMenu);
+    };
+  }, [openMenu]);
+
   function rememberBoardScroll() {
     if (!dragRef.current.active && boardRef.current) {
       boardScrollLeftRef.current = boardRef.current.scrollLeft;
     }
+    setOpenMenu(null);
   }
 
   function updateStatus(course, nextStatus) {
@@ -383,7 +398,20 @@ function CareerSelect({ options, value, onChange }) {
 function StatusMenu({ x, y, rawStatus, onSelect, onClose }) {
   return (
     <>
-      <button className="flow-status-menu-backdrop" type="button" aria-label="Cerrar menu" onClick={onClose} />
+      <button
+        className="flow-status-menu-backdrop"
+        type="button"
+        aria-label="Cerrar menu"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      />
       <div
         className="flow-status-menu is-visible"
         style={{ left: x, top: y }}

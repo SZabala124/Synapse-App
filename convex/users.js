@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-import { flowPrograms } from "./flowData";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { COURSE_CODE_ALIASES, flowPrograms } from "./flowData";
 
 const USER_TYPES = {
   user: "user",
@@ -140,6 +140,7 @@ export const ensureProfile = mutation({
     nationalId: v.optional(v.string()),
     phone: v.optional(v.string()),
     careers: v.optional(v.array(v.string())),
+    supabaseAuthUserId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
@@ -147,6 +148,7 @@ export const ensureProfile = mutation({
     const existing = pickBestUser(matchingUsers);
     const seededType = seedUserType(email);
     const profilePatch = compactProfilePatch(args);
+    const referralPatch = existing?.referralCode ? {} : { referralCode: await generateReferralCode(ctx) };
     if (resolveUserType(existing, email) !== USER_TYPES.admin && (profilePatch.careers?.length ?? 0) > 2) {
       throw new Error("Solo puedes seleccionar hasta 2 carreras a la vez.");
     }
@@ -177,7 +179,7 @@ export const ensureProfile = mutation({
           careerSelectionUpdatedAt: now,
         };
       }
-      if (nextType !== existing.userType || seededType === USER_TYPES.admin || Object.keys(profilePatch).length > 0) {
+      if (nextType !== existing.userType || seededType === USER_TYPES.admin || Object.keys(profilePatch).length > 0 || Object.keys(referralPatch).length > 0) {
         for (const user of matchingUsers) {
           const userTypePatch = user.userType === USER_TYPES.blocked
             ? USER_TYPES.blocked
@@ -186,6 +188,7 @@ export const ensureProfile = mutation({
               : nextType;
           await ctx.db.patch(user._id, {
             ...profilePatch,
+            ...referralPatch,
             ...careerSelectionPatch,
             userType: userTypePatch,
           });
@@ -198,6 +201,7 @@ export const ensureProfile = mutation({
     const id = await ctx.db.insert("users", {
       email,
       ...profilePatch,
+      ...referralPatch,
       userType: seededType,
     });
     return await ctx.db.get(id);
@@ -219,7 +223,7 @@ export const recoverLocalAccess = mutation({
     }
 
     if (!nationalId || normalizeNationalIdValue(user.nationalId) !== nationalId) {
-      throw new Error("La cédula no coincide con la cuenta registrada.");
+      throw new Error("El documento no coincide con la cuenta registrada.");
     }
 
     const resolved = withResolvedUserType(user);
@@ -237,6 +241,52 @@ export const recoverLocalAccess = mutation({
       createdAt: resolved._creationTime ?? resolved.createdAt ?? 0,
       updatedAt: resolved.updatedAt ?? resolved._creationTime ?? 0,
     };
+  },
+});
+
+export const verifyPasswordRecovery = internalMutation({
+  args: { email: v.string(), nationalId: v.string() },
+  returns: v.object({
+    supabaseAuthUserId: v.union(v.string(), v.null()),
+    profile: v.object({
+      email: v.string(), firstName: v.string(), lastName: v.string(), nationalId: v.string(), phone: v.string(), careers: v.array(v.string()),
+    }),
+  }),
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const now = Date.now();
+    const attempt = await ctx.db.query("passwordRecoveryAttempts").withIndex("by_email", (q) => q.eq("email", email)).first();
+    const windowStartedAt = attempt && now - attempt.windowStartedAt < 60 * 60 * 1000 ? attempt.windowStartedAt : now;
+    const count = attempt && windowStartedAt === attempt.windowStartedAt ? attempt.count : 0;
+    if (count >= 5) throw new Error("Demasiados intentos de recuperación. Intenta de nuevo en una hora.");
+    if (attempt) await ctx.db.patch(attempt._id, { windowStartedAt, count: count + 1 });
+    else await ctx.db.insert("passwordRecoveryAttempts", { email, windowStartedAt, count: 1 });
+
+    const user = await findBestUserByEmail(ctx, email);
+    if (!user || normalizeNationalIdValue(user.nationalId) !== normalizeNationalIdValue(args.nationalId)) {
+      throw new Error("No pudimos validar los datos de la cuenta.");
+    }
+    return {
+      supabaseAuthUserId: user.supabaseAuthUserId ?? null,
+      profile: {
+        email: user.email ?? email,
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        nationalId: user.nationalId ?? "",
+        phone: user.phone ?? "",
+        careers: user.careers ?? [],
+      },
+    };
+  },
+});
+
+export const saveSupabaseAuthUserId = internalMutation({
+  args: { email: v.string(), supabaseAuthUserId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const users = await findUsersByEmail(ctx, normalizeEmail(args.email));
+    for (const user of users) await ctx.db.patch(user._id, { supabaseAuthUserId: args.supabaseAuthUserId });
+    return null;
   },
 });
 
@@ -555,6 +605,7 @@ function buildEntitlements(user, email) {
   const plan = resolvePlan(user);
   const now = Date.now();
   const materialUsage = normalizePeriodUsage(user?.proMaterialPeriodStart, user?.proMaterialPeriodEnd, user?.proMaterialUses, now);
+  const freeProMaterialLimit = FREE_PRO_MATERIAL_LIMIT + activeReferralMaterialBonus(user, now);
   const toolUsage = normalizePeriodUsage(user?.toolUsePeriodStart, user?.toolUsePeriodEnd, user?.toolUses, now);
   const isAdminUser = userType === USER_TYPES.admin;
 
@@ -567,9 +618,9 @@ function buildEntitlements(user, email) {
     canSeeAllCareerSubjects: isAdminUser || plan !== PLANS.free,
     canUseFreeMaterials: true,
     proMaterials: {
-      limit: isAdminUser || plan !== PLANS.free ? null : FREE_PRO_MATERIAL_LIMIT,
+      limit: isAdminUser || plan !== PLANS.free ? null : freeProMaterialLimit,
       used: isAdminUser || plan !== PLANS.free ? 0 : materialUsage.uses.length,
-      remaining: isAdminUser || plan !== PLANS.free ? null : Math.max(0, FREE_PRO_MATERIAL_LIMIT - materialUsage.uses.length),
+      remaining: isAdminUser || plan !== PLANS.free ? null : Math.max(0, freeProMaterialLimit - materialUsage.uses.length),
       usedIds: materialUsage.uses,
       resetAt: materialUsage.periodEnd,
     },
@@ -636,7 +687,7 @@ function materialAccessState(user, email, document) {
   if (remaining <= 0) {
     return {
       allowed: false,
-      reason: "Ya usaste tus 3 materiales Pro de este mes. Mejora tu plan para abrir materiales Pro sin límites.",
+      reason: `Ya usaste tus ${entitlement.proMaterials.limit ?? FREE_PRO_MATERIAL_LIMIT} materiales Pro de este mes. Mejora tu plan para abrir materiales Pro sin límites.`,
       plan: entitlement.plan,
       remaining: 0,
       resetAt: entitlement.proMaterials.resetAt,
@@ -650,9 +701,9 @@ function materialAccessState(user, email, document) {
     plan: entitlement.plan,
     remaining,
     remainingAfterUse: Math.max(0, remaining - 1),
-    limit: FREE_PRO_MATERIAL_LIMIT,
+    limit: entitlement.proMaterials.limit ?? FREE_PRO_MATERIAL_LIMIT,
     resetAt: entitlement.proMaterials.resetAt,
-    message: `Este material es Pro. Si continúas usarás 1 de tus ${FREE_PRO_MATERIAL_LIMIT} materiales Pro del mes.`,
+    message: `Este material es Pro. Si continúas usarás 1 de tus ${entitlement.proMaterials.limit ?? FREE_PRO_MATERIAL_LIMIT} materiales Pro del mes.`,
   };
 }
 
@@ -749,12 +800,34 @@ function normalizeEmail(email) {
 }
 
 function normalizeNationalIdValue(value) {
-  return String(value ?? "").replace(/\D/g, "").slice(0, 9);
+  return String(value ?? "").replace(/\D/g, "").slice(0, 12);
+}
+
+function activeReferralMaterialBonus(user, now) {
+  if ((user?.referralMaterialBonusEndsAt ?? 0) <= now) return 0;
+  const bonus = Number(user?.referralMaterialBonus ?? 0);
+  return Number.isFinite(bonus) && bonus > 0 ? Math.floor(bonus) : 0;
+}
+
+async function generateReferralCode(ctx) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    let code = "";
+    for (let index = 0; index < 8; index += 1) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_referral_code", (q) => q.eq("referralCode", code))
+      .first();
+    if (!existing) return code;
+  }
+  throw new Error("No se pudo generar un código de referido. Intenta de nuevo.");
 }
 
 function compactProfilePatch(args) {
   const patch = {};
-  for (const key of ["firstName", "lastName", "nationalId", "phone"]) {
+  for (const key of ["firstName", "lastName", "nationalId", "phone", "supabaseAuthUserId"]) {
     if (typeof args[key] === "string" && args[key].trim()) {
       patch[key] = args[key].trim();
     }
@@ -797,7 +870,10 @@ function subjectsForCareers(careers) {
 
 function sanitizeSubjectCodes(codes) {
   if (!Array.isArray(codes)) return [];
-  return Array.from(new Set(codes.map((code) => String(code ?? "").trim()).filter(Boolean)));
+  return Array.from(new Set(codes
+    .map((code) => String(code ?? "").trim())
+    .filter(Boolean)
+    .map((code) => COURSE_CODE_ALIASES[code] ?? code)));
 }
 
 function normalizeEditsRemaining(value) {

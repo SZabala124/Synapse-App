@@ -65,6 +65,12 @@ export function MaterialsView({
     ...subjects.map((item) => ({ value: item.id, label: subjectName(subjects, item.id), count: subjectCounts.get(item.id) ?? 0 })),
   ];
   const sortOptions = ["Recientes", "Más vistos"];
+  const hasActiveFilters = Boolean(searchDraft.trim())
+    || format !== "Todos"
+    || level !== "Todos"
+    || subject !== "Todas"
+    || sort !== "Recientes"
+    || savedOnly;
 
   const [isSentinelIntersecting, setIsSentinelIntersecting] = useState(false);
 
@@ -192,6 +198,22 @@ export function MaterialsView({
               onChange={onSortChange}
             />
           </div>
+          <button
+            className="secondary-action library-search-clear"
+            type="button"
+            disabled={!hasActiveFilters}
+            onClick={() => {
+              setSearchDraft("");
+              onSearchChange?.("");
+              onFormatChange?.("Todos");
+              onLevelChange?.("Todos");
+              onSubjectChange?.("Todas");
+              onSortChange?.("Recientes");
+              onSavedOnlyChange?.(false);
+            }}
+          >
+            Quitar todos los filtros
+          </button>
         </div>
       </div>
 

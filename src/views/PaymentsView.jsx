@@ -62,7 +62,10 @@ export function PaymentsView({ adminEmail }) {
               <div><dt>Fecha y hora</dt><dd>{formatDateTime(payment.createdAt)}</dd></div>
               <div><dt>Correo</dt><dd>{payment.userEmail}</dd></div>
               <div><dt>Monto USD</dt><dd>${payment.amountUsd}</dd></div>
-              {payment.basePaymentId && <div><dt>Ampliación de período</dt><dd>Abonado: ${payment.creditedUsd} · Diferencia: ${payment.amountUsd}</dd></div>}
+              {payment.basePaymentId && <div><dt>Cambio o ampliación de plan</dt><dd>Abonado: ${payment.creditedUsd} · Diferencia: ${payment.amountUsd}</dd></div>}
+              {payment.appliedDiscountPercent && <div><dt>Descuento aplicado</dt><dd>{payment.appliedDiscountPercent}% · Antes: ${payment.priceBeforeDiscountUsd}</dd></div>}
+              {payment.referralDiscountPercent && <div><dt>Descuento por referido</dt><dd>{payment.referralDiscountPercent}% · Antes: ${payment.priceBeforeDiscountUsd}</dd></div>}
+              {payment.referralCode && <div><dt>Código de referido</dt><dd>{payment.referralCode}</dd></div>}
               <div><dt>Tasa BCV</dt><dd>{payment.bcvRate ? `Bs ${formatBs(payment.bcvRate)}` : "No registrada"}</dd></div>
                 <div><dt>Teléfono</dt><dd>{payment.payerPhone}</dd></div>
               <div><dt>Banco</dt><dd>{payment.bankName} ({payment.bankCode})</dd></div>

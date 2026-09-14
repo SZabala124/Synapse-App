@@ -10,7 +10,7 @@ const CAREER_OPTIONS = [
   { id: "quimica", name: "Ingeniería Química" },
 ];
 
-export function ProfileView({ currentUser, profile, subjectSelection, pendingPayment, onOpenSubjectSelection, onSave, onSignOut }) {
+export function ProfileView({ currentUser, profile, subjectSelection, pendingPayment, devices = [], onRemoveDevice, onOpenSubjectSelection, onSave, onSignOut }) {
   const mergedProfile = useMemo(() => ({ ...currentUser, ...(profile?.pendingCreation ? {} : profile) }), [currentUser, profile]);
   const [formState, setFormState] = useState(() => profileToForm(mergedProfile));
   const [error, setError] = useState("");
@@ -18,6 +18,7 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
   const [saving, setSaving] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [pendingCareerSave, setPendingCareerSave] = useState(null);
+  const [referralCopied, setReferralCopied] = useState(false);
 
   useEffect(() => {
     setFormState(profileToForm(mergedProfile));
@@ -80,6 +81,17 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
     });
   }
 
+  async function copyReferralCode() {
+    if (!mergedProfile.referralCode) return;
+    try {
+      await navigator.clipboard.writeText(mergedProfile.referralCode);
+      setReferralCopied(true);
+      window.setTimeout(() => setReferralCopied(false), 1800);
+    } catch {
+      setError("No se pudo copiar el código. Puedes seleccionarlo y copiarlo manualmente.");
+    }
+  }
+
   return (
     <section className="workspace profile-workspace">
       <div className="workspace-header profile-header">
@@ -124,8 +136,8 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
               <input value={formState.lastName} onChange={(event) => updateField("lastName", onlySpanishLetters(event.target.value).slice(0, 15))} maxLength={15} required />
             </label>
             <label>
-              Cédula
-              <input value={formState.nationalId} inputMode="numeric" onChange={(event) => updateField("nationalId", onlyDigits(event.target.value).slice(0, 9))} maxLength={9} required />
+              Cédula o Carnet Universitario
+              <input value={formState.nationalId} inputMode="numeric" onChange={(event) => updateField("nationalId", onlyDigits(event.target.value).slice(0, 12))} maxLength={12} required />
             </label>
             <label>
               Teléfono
@@ -188,6 +200,48 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
         </form>
       </section>
 
+      <section className="profile-referral-section" aria-labelledby="profile-referral-title">
+        <div>
+          <p className="eyebrow">Programa de referidos</p>
+          <h2 id="profile-referral-title">Tu código de referido</h2>
+          <p>Compártelo para recibir recompensas cuando un pago referido sea aprobado.</p>
+          <small className="profile-referral-description">{referralRewardDescription(mergedProfile.plan)}</small>
+        </div>
+        <div className="profile-referral-code-row">
+          <code>{mergedProfile.referralCode || "Generando..."}</code>
+          <button className="quiet-button" type="button" onClick={copyReferralCode} disabled={!mergedProfile.referralCode}>
+            {referralCopied ? "Copiado" : "Copiar"}
+          </button>
+        </div>
+        {mergedProfile.nextPaymentDiscountPercent > 0 && (
+          <small className="profile-referral-reward">Tienes {mergedProfile.nextPaymentDiscountPercent}% de descuento acumulado. En cada pago se aplica hasta 100% y el excedente se guarda para el siguiente.</small>
+        )}
+      </section>
+
+      {onRemoveDevice && (
+        <section className="profile-devices-section" aria-labelledby="profile-devices-title">
+          <div className="profile-devices-heading">
+            <div>
+              <p className="eyebrow">Seguridad de la cuenta</p>
+              <h2 id="profile-devices-title">Navegadores vinculados</h2>
+              <p>Gestiona los navegadores que tienen acceso a tu cuenta. Puedes vincular hasta 2.</p>
+            </div>
+            <span className="profile-devices-count">{devices.length}/2</span>
+          </div>
+          <div className="profile-devices-list">
+            {devices.length === 0 ? <p className="profile-devices-empty">No hay navegadores registrados todavía.</p> : devices.map((device) => (
+              <div className="profile-device-row" key={device.deviceId}>
+                <div>
+                  <strong>{device.label}</strong>
+                  <span>{device.isCurrent ? "Este navegador" : `Visto ${formatDeviceDate(device.lastSeenAt)}`}</span>
+                </div>
+                <button className="quiet-button" type="button" onClick={() => onRemoveDevice(device.deviceId)}>Quitar</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {pendingCareerSave && createPortal(
         <div className="course-detail-overlay subject-edit-confirm-overlay is-visible" role="dialog" aria-modal="true" aria-labelledby="career-confirm-title">
           <section className="course-detail-modal subject-edit-confirm-modal">
@@ -245,7 +299,7 @@ function ConfirmSignOutModal({ onCancel, onConfirm }) {
 export function validateProfileForm(profile) {
   if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,15}$/.test(profile.firstName.trim()) || profile.firstName.replace(/ /g, "").length < 2) throw new Error("El nombre debe contener al menos 2 letras; admite espacios y un máximo de 15 caracteres.");
   if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,15}$/.test(profile.lastName.trim()) || profile.lastName.replace(/ /g, "").length < 2) throw new Error("El apellido debe contener al menos 2 letras; admite espacios y un máximo de 15 caracteres.");
-  if (!/^\d{6,9}$/.test(profile.nationalId)) throw new Error("La cédula debe contener entre 6 y 9 números.");
+  if (!/^\d{6,12}$/.test(profile.nationalId)) throw new Error("La cédula o el carnet universitario debe contener entre 6 y 12 números.");
   if (!/^0(2\d{2}|4(12|14|16|24|26))\d{7}$/.test(profile.phone)) throw new Error("El teléfono debe ser venezolano. Ejemplo: 04121234567 o 02121234567.");
   if (!profile.careers.length) throw new Error("Selecciona al menos una carrera.");
 }
@@ -270,6 +324,12 @@ function formatCareerSelectionMeta(profile) {
   if (profile?.userType === "admin") return "Admin: sin límite";
   const remaining = profile?.careerSelectionEditsRemaining ?? 1;
   return `${remaining} cambio${remaining === 1 ? "" : "s"} restante${remaining === 1 ? "" : "s"} este trimestre`;
+}
+
+function referralRewardDescription(plan) {
+  if (plan === "excellence") return "Con Excellence recibes 10% de descuento en tu próximo pago por cada referido aprobado.";
+  if (plan === "pro") return "Con Pro recibes 7% de descuento en tu próximo pago por cada referido aprobado.";
+  return "Con el plan Gratis recibes 1 uso adicional de material Pro durante este mes por cada referido aprobado.";
 }
 
 function isCareerSelectionLocked(profile) {
@@ -308,6 +368,10 @@ function formatBs(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function formatDeviceDate(timestamp) {
+  return new Date(timestamp).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function initials(firstName, lastName) {
