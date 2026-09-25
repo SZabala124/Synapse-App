@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { getMaterialImageUrl, getMaterialPdfBlob } from "../services/materialFiles";
+import { matchesFuzzySearch } from "../utils/fuzzySearch";
 
 const MATERIAL_FORMAT_OPTIONS = ["Guía", "Formulario", "Resumen", "Parcial", "Quiz", "Taller", "Cuaderno de Ejercicios", "PDF", "Presentación", "Video"];
 const MATERIAL_FORMAT_LABELS = new Map([
@@ -9,6 +10,46 @@ const MATERIAL_FORMAT_LABELS = new Map([
   ["Presentacion", "Presentación"],
   ["Presentación", "Presentación"],
 ]);
+const KEYBOARD_PRESS_WINDOW_MS = 3 * 60 * 1000;
+const KEYBOARD_ACTIVATION_DEDUPE_MS = 2000;
+const FIRST_KEYBOARD_LOCK_MS = 5 * 60 * 1000;
+const REPEAT_KEYBOARD_LOCK_MS = 30 * 60 * 1000;
+
+function keyboardGuardStorageKey(userId) {
+  const input = String(userId ?? "anonymous").trim().toLowerCase();
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `synapse-pro-key-guard-${(hash >>> 0).toString(36)}`;
+}
+
+function readKeyboardGuard(storageKey) {
+  const empty = { presses: [], lockedUntil: 0, escalationUntil: 0 };
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
+    if (!saved || typeof saved !== "object") return empty;
+    const now = Date.now();
+    const lockedUntil = Number(saved.lockedUntil) || 0;
+    const escalationUntil = Number(saved.escalationUntil) || 0;
+    if (lockedUntil > now) return { ...empty, lockedUntil, escalationUntil };
+    if (escalationUntil > now) return { ...empty, escalationUntil };
+    const presses = Array.isArray(saved.presses)
+      ? saved.presses.filter((timestamp) => Number.isFinite(timestamp) && now - timestamp < KEYBOARD_PRESS_WINDOW_MS)
+      : [];
+    return { ...empty, presses };
+  } catch {
+    return empty;
+  }
+}
+
+function formatLockCountdown(milliseconds) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
 
 export function MaterialsView({
   materials,
@@ -37,6 +78,7 @@ export function MaterialsView({
   onBeforeOpenMaterial,
   getMaterialAccessBadge,
   watermarkText = "",
+  viewerUserId = "anonymous",
   countMaterials = materials,
   countStats = null,
   hasMore = false,
@@ -149,26 +191,32 @@ export function MaterialsView({
 
   return (
     <section className="workspace">
-      <div className="workspace-header">
+      <div className="workspace-header workspace-header-top-aligned">
         <div className="materials-heading-copy">
           <p className="eyebrow">Biblioteca privada</p>
           <h1>Materiales de estudio</h1>
           <p>Encuentra guías, evaluaciones y recursos clave en segundos con filtros por materia, formato y nivel.</p>
+          <div className="material-control-actions">
+            <button
+              className={savedOnly ? "secondary-action material-saved-filter is-active" : "secondary-action material-saved-filter"}
+              type="button"
+              onClick={() => onSavedOnlyChange?.(!savedOnly)}
+              aria-pressed={savedOnly}
+            >
+              {savedOnly ? "Ver todos" : "Guardados"}
+            </button>
+            {canAddMaterial && (
+              <button className="primary-action material-add-button" type="button" onClick={() => setUploadOpen(true)}>
+                Agregar material
+              </button>
+            )}
+          </div>
         </div>
-        <div className="library-search">
+        <div className="library-search materials-library-search">
           <label className="library-search-field library-search-field-wide library-search-field-search">
             <span>Busqueda</span>
             <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} type="search" placeholder="Buscar material..." aria-label="Buscar material" />
           </label>
-          <div className="library-search-field">
-            <span>Nivel</span>
-            <CustomSelect
-              ariaLabel="Filtrar por nivel"
-              value={level}
-              options={levelOptions.map((item) => ({ value: item, label: item, count: item === "Todos" ? levelTotal : levelCounts.get(item) ?? 0 }))}
-              onChange={onLevelChange}
-            />
-          </div>
           <div className="library-search-field">
             <span>Tipo</span>
             <CustomSelect
@@ -176,6 +224,15 @@ export function MaterialsView({
               value={format}
               options={formatOptions.map((item) => ({ value: item, label: item, count: item === "Todos" ? formatTotal : formatCounts.get(item) ?? 0 }))}
               onChange={onFormatChange}
+            />
+          </div>
+          <div className="library-search-field">
+            <span>Nivel</span>
+            <CustomSelect
+              ariaLabel="Filtrar por nivel"
+              value={level}
+              options={levelOptions.map((item) => ({ value: item, label: item, count: item === "Todos" ? levelTotal : levelCounts.get(item) ?? 0 }))}
+              onChange={onLevelChange}
             />
           </div>
           <div className="library-search-field library-search-field-subject">
@@ -217,24 +274,11 @@ export function MaterialsView({
         </div>
       </div>
 
-      <div className="material-control-row">
-        {remoteStatus && <div className="cache-note material-status-note">{remoteStatus}</div>}
-        <div className="material-control-actions">
-          <button
-            className={savedOnly ? "secondary-action material-saved-filter is-active" : "secondary-action material-saved-filter"}
-            type="button"
-            onClick={() => onSavedOnlyChange?.(!savedOnly)}
-            aria-pressed={savedOnly}
-          >
-            {savedOnly ? "Ver todos" : "Guardados"}
-          </button>
-          {canAddMaterial && (
-            <button className="primary-action material-add-button" type="button" onClick={() => setUploadOpen(true)}>
-              Agregar material
-            </button>
-          )}
+      {remoteStatus && (
+        <div className="material-control-row">
+          <div className="cache-note material-status-note">{remoteStatus}</div>
         </div>
-      </div>
+      )}
 
       <section className="material-grid" aria-label="Materiales guardados">
         {isLoadingFirst && (
@@ -353,6 +397,7 @@ export function MaterialsView({
           onRate={(rating) => onRateMaterial?.(viewerMaterial, rating)}
           onClearRating={() => onClearMaterialRating?.(viewerMaterial)}
           watermarkText={watermarkText}
+          viewerUserId={viewerUserId}
         />,
         document.body,
       )}
@@ -418,7 +463,7 @@ function CustomSelect({ ariaLabel, value, options, onChange, searchable = false,
   const [query, setQuery] = useState("");
   const selected = options.find((option) => option.value === value) ?? (value ? { value, label: value } : options[0]);
   const visibleOptions = searchable && query.trim()
-    ? options.filter((option) => normalizeSelectSearch([option.label, option.value].join(" ")).includes(normalizeSelectSearch(query)))
+    ? options.filter((option) => matchesFuzzySearch(query, [option.label, option.value]))
     : options;
 
   function selectOption(nextValue) {
@@ -442,7 +487,7 @@ function CustomSelect({ ariaLabel, value, options, onChange, searchable = false,
       >
         <span className="custom-select-label">{selected?.label}</span>
         {selected?.count !== undefined && <span className="custom-select-count">{selected.count}</span>}
-        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+        <span className="custom-select-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label={ariaLabel}>
@@ -481,14 +526,6 @@ function CustomSelect({ ariaLabel, value, options, onChange, searchable = false,
       )}
     </div>
   );
-}
-
-function normalizeSelectSearch(value) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
 }
 
 function normalizeMaterialFormat(format) {
@@ -1069,7 +1106,7 @@ function SubjectMultiPicker({
   );
 }
 
-export function MaterialViewerModal({ material, onClose, onRate, onClearRating, watermarkText = "" }) {
+export function MaterialViewerModal({ material, onClose, onRate, onClearRating, watermarkText = "", viewerUserId = "anonymous" }) {
   const [pdfBlob, setPdfBlob] = useState(null);
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
@@ -1078,6 +1115,9 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
     return window.matchMedia?.("(max-width: 680px)").matches ? 60 : 100;
   });
   const [privacyShield, setPrivacyShield] = useState(false);
+  const keyboardGuardKey = keyboardGuardStorageKey(viewerUserId);
+  const [keyboardGuard, setKeyboardGuard] = useState(() => readKeyboardGuard(keyboardGuardKey));
+  const [guardClock, setGuardClock] = useState(Date.now);
   const [selectedRating, setSelectedRating] = useState(material.userRating ?? 0);
   const [ratingSummary, setRatingSummary] = useState({
     average: material.ratingAverage ?? 0,
@@ -1086,8 +1126,58 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
   const frameRef = useRef(null);
   const pendingScrollRef = useRef(null);
   const privacyShieldTimerRef = useRef(null);
+  const keyboardGuardRef = useRef(keyboardGuard);
+  const lastKeyboardActivationRef = useRef(0);
   const youtubeEmbedUrl = getYouTubeEmbedUrl(material.externalUrl);
   const isProtectedPdf = !material.externalUrl;
+  const isProMaterial = String(material.level ?? "").toLowerCase() === "pro";
+  const keyboardLockRemaining = Math.max(0, keyboardGuard.lockedUntil - guardClock);
+
+  function saveKeyboardGuard(nextGuard) {
+    keyboardGuardRef.current = nextGuard;
+    setKeyboardGuard(nextGuard);
+    try {
+      window.localStorage.setItem(keyboardGuardKey, JSON.stringify(nextGuard));
+    } catch {
+      // The in-memory lock still applies if browser storage is unavailable.
+    }
+  }
+
+  useEffect(() => {
+    const nextGuard = readKeyboardGuard(keyboardGuardKey);
+    keyboardGuardRef.current = nextGuard;
+    setKeyboardGuard(nextGuard);
+  }, [keyboardGuardKey]);
+
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key !== keyboardGuardKey) return;
+      const nextGuard = readKeyboardGuard(keyboardGuardKey);
+      keyboardGuardRef.current = nextGuard;
+      setKeyboardGuard(nextGuard);
+      setGuardClock(Date.now());
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [keyboardGuardKey]);
+
+  useEffect(() => {
+    if (!keyboardGuard.lockedUntil && !keyboardGuard.escalationUntil) return undefined;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setGuardClock(now);
+      const current = keyboardGuardRef.current;
+      if (current.lockedUntil && current.lockedUntil <= now) {
+        const nextGuard = current.escalationUntil > now
+          ? { presses: [], lockedUntil: 0, escalationUntil: current.escalationUntil }
+          : { presses: [], lockedUntil: 0, escalationUntil: 0 };
+        saveKeyboardGuard(nextGuard);
+      } else if (!current.lockedUntil && current.escalationUntil && current.escalationUntil <= now) {
+        saveKeyboardGuard({ presses: [], lockedUntil: 0, escalationUntil: 0 });
+      }
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [keyboardGuard.lockedUntil, keyboardGuard.escalationUntil]);
 
   async function handleRate(rating) {
     setRatingSummary((current) => localRatingPatch(current, selectedRating, rating));
@@ -1118,10 +1208,31 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
   }, [material.externalUrl, material.storagePath]);
 
   useEffect(() => {
-    if (!isProtectedPdf) return undefined;
+    if (!isProtectedPdf || !isProMaterial) return undefined;
 
-    function showPrivacyShield(duration = 0) {
-      setPrivacyShield(true);
+    function showPrivacyShield(duration = 0, countActivation = false) {
+      const now = Date.now();
+      if (countActivation) {
+        lastKeyboardActivationRef.current = now;
+        const currentGuard = keyboardGuardRef.current;
+        if (currentGuard.lockedUntil <= now) {
+          const recentPresses = currentGuard.presses.filter((timestamp) => now - timestamp < KEYBOARD_PRESS_WINDOW_MS);
+          recentPresses.push(now);
+          if (recentPresses.length >= 3) {
+            const isRepeatOffense = currentGuard.escalationUntil > now;
+            const lockDuration = isRepeatOffense ? REPEAT_KEYBOARD_LOCK_MS : FIRST_KEYBOARD_LOCK_MS;
+            const lockedUntil = now + lockDuration;
+            saveKeyboardGuard({
+              presses: [],
+              lockedUntil,
+              escalationUntil: isRepeatOffense ? 0 : lockedUntil + KEYBOARD_PRESS_WINDOW_MS,
+            });
+          } else {
+            saveKeyboardGuard({ ...currentGuard, presses: recentPresses });
+          }
+        }
+      }
+      flushSync(() => setPrivacyShield(true));
       if (privacyShieldTimerRef.current) window.clearTimeout(privacyShieldTimerRef.current);
       if (duration > 0) {
         privacyShieldTimerRef.current = window.setTimeout(() => {
@@ -1139,56 +1250,47 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
       if (!document.hidden && document.hasFocus()) setPrivacyShield(false);
     }
 
-    function handleKeyDown(event) {
-      const shieldKeys = new Set(["PrintScreen", "Shift", "Control", "Alt", "Meta", "Fn", "FnLock"]);
-      const isScreenshotLikeCombo = (
-        event.key?.toLowerCase() === "s" &&
-        (event.metaKey || event.ctrlKey) &&
-        event.shiftKey
-      );
-      const isPrintLikeCombo = (
-        event.key?.toLowerCase() === "p" &&
-        (event.metaKey || event.ctrlKey)
-      );
-
-      if (shieldKeys.has(event.key) || isScreenshotLikeCombo || isPrintLikeCombo) {
-        showPrivacyShield(2200);
-      }
-    }
-
-    function handleKeyUp(event) {
-      if (["PrintScreen", "Shift", "Control", "Alt", "Meta", "Fn", "FnLock"].includes(event.key)) {
-        showPrivacyShield(900);
-      }
+    function handleKeyboardActivity(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const now = Date.now();
+      const isPrintScreen = event.key === "PrintScreen" || event.code === "PrintScreen" || event.keyCode === 44;
+      const isFreshKeyPress = event.type === "keydown" && !event.repeat;
+      const isFallbackActivation = event.type === "beforeinput" && now - lastKeyboardActivationRef.current > KEYBOARD_ACTIVATION_DEDUPE_MS;
+      showPrivacyShield(isPrintScreen ? 5000 : 3200, isFreshKeyPress || isFallbackActivation);
     }
 
     function handleVisibilityChange() {
       if (document.hidden) {
-        showPrivacyShield();
+        showPrivacyShield(0, Date.now() - lastKeyboardActivationRef.current > KEYBOARD_ACTIVATION_DEDUPE_MS);
       } else {
         hidePrivacyShield();
       }
     }
 
     function handleBlur() {
-      showPrivacyShield();
+      showPrivacyShield(0, Date.now() - lastKeyboardActivationRef.current > KEYBOARD_ACTIVATION_DEDUPE_MS);
     }
 
-    window.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("keyup", handleKeyUp, true);
+    window.addEventListener("keydown", handleKeyboardActivity, true);
+    window.addEventListener("keyup", handleKeyboardActivity, true);
+    window.addEventListener("keypress", handleKeyboardActivity, true);
+    document.addEventListener("beforeinput", handleKeyboardActivity, true);
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", hidePrivacyShield);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("keyup", handleKeyUp, true);
+      window.removeEventListener("keydown", handleKeyboardActivity, true);
+      window.removeEventListener("keyup", handleKeyboardActivity, true);
+      window.removeEventListener("keypress", handleKeyboardActivity, true);
+      document.removeEventListener("beforeinput", handleKeyboardActivity, true);
       window.removeEventListener("blur", handleBlur);
       window.removeEventListener("focus", hidePrivacyShield);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (privacyShieldTimerRef.current) window.clearTimeout(privacyShieldTimerRef.current);
     };
-  }, [isProtectedPdf]);
+  }, [isProtectedPdf, isProMaterial, keyboardGuardKey]);
 
   useEffect(() => {
     if (!material.imageStoragePath) return;
@@ -1247,7 +1349,7 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
 
   return (
     <div className="course-detail-overlay material-viewer-overlay is-visible" role="dialog" aria-modal="true">
-      <section className="course-detail-modal material-viewer-modal">
+      <section className={`course-detail-modal material-viewer-modal${isProtectedPdf && isProMaterial ? " has-pro-disclaimer" : ""}`}>
         <header>
           <div>
             <h2>{material.title}</h2>
@@ -1268,6 +1370,11 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
             <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
           </div>
         </header>
+        {isProtectedPdf && isProMaterial && (
+          <aside className="material-pro-disclaimer" role="note">
+            Este material Pro es de uso personal: se prohíbe compartir imágenes, capturas o extractos, y teclear cualquier tecla del teclado mientras lo consultas. Al acumular tres pulsaciones, el acceso se bloqueará temporalmente.
+          </aside>
+        )}
         <div className="material-viewer-frame-wrap">
           <div className="material-viewer-frame" ref={frameRef}>
             {youtubeEmbedUrl && (
@@ -1313,7 +1420,14 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
           {isProtectedPdf && privacyShield && (
             <div className="material-privacy-shield" aria-live="polite">
               <strong>Vista protegida</strong>
-              <span>El material se oculta cuando la ventana pierde el foco.</span>
+              <span>Se prohíbe teclear cualquier tecla del teclado. Pulsaciones detectadas: {Math.min(keyboardGuard.presses.length, 2)}/3. El material también se oculta cuando la ventana pierde el foco.</span>
+            </div>
+          )}
+          {isProtectedPdf && isProMaterial && keyboardLockRemaining > 0 && (
+            <div className="material-keyboard-lock" role="alert" aria-live="assertive">
+              <strong>Acceso bloqueado temporalmente</strong>
+              <span>Se detectaron tres pulsaciones de teclado. El acceso al material Pro está bloqueado.</span>
+              <time>{formatLockCountdown(keyboardLockRemaining)}</time>
             </div>
           )}
         </div>
@@ -1365,19 +1479,13 @@ function materialSubjectIds(material) {
 }
 
 function buildSubjectPicker(subjects, selectedSubjectIds, subjectSearch) {
-  const normalizedSubjectSearch = normalizeSearchText(subjectSearch);
   const selectedIdSet = new Set(selectedSubjectIds);
   const selectedSubjects = selectedSubjectIds
     .map((id) => subjects.find((subject) => subject.id === id))
     .filter(Boolean);
   const visibleSubjects = subjects
     .filter((subject) => !selectedIdSet.has(subject.id))
-    .filter((subject) => [subject.name, subject.code, subject.id, subject.careers?.map((career) => career.name).join(" ")]
-      .join(" ")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .includes(normalizedSubjectSearch))
+    .filter((subject) => matchesFuzzySearch(subjectSearch, [subject.name, subject.code, subject.id, subject.careers?.map((career) => career.name).join(" ")]))
     .slice(0, 80);
   return { selectedSubjects, visibleSubjects };
 }
@@ -1568,12 +1676,4 @@ function prettifySpanishSubject(value) {
     ["ingenieria ambiental", "Ingeniería Ambiental"],
   ]);
   return knownSubjects.get(cleanValue.toLowerCase()) ?? cleanValue;
-}
-
-function normalizeSearchText(value) {
-  return String(value ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
 }

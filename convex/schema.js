@@ -175,6 +175,16 @@ export default defineSchema({
     .index("by_user_career", ["userEmail", "career"])
     .index("by_user_career_course", ["userEmail", "career", "courseCode"])
     .index("by_user_course", ["userEmail", "courseCode"]),
+  flowDifficultyRatings: defineTable({
+    career: v.string(),
+    courseCode: v.string(),
+    stars: v.number(),
+    updatedBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_course_code", ["courseCode"])
+    .index("by_career", ["career"])
+    .index("by_career_and_course", ["career", "courseCode"]),
   comments: defineTable({
     body: v.string(),
     userEmail: v.string(),

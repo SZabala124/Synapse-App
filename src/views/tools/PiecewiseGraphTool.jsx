@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { LatexBlock } from "./latexReader";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { ToolExampleButton } from "./ToolExampleButton";
 
 const PRESETS = {
   parcial: [
@@ -25,6 +26,7 @@ const EQUATION_TYPE_OPTIONS = [
 
 export function PiecewiseGraphToolModal({ onClose }) {
   const [segments, setSegments] = useState(PRESETS.parcial);
+  const [preset, setPreset] = useState("parcial");
   const [creationMode, setCreationMode] = useState("points");
   const [creationError, setCreationError] = useState("");
   const [equationDraft, setEquationDraft] = useState({
@@ -122,7 +124,10 @@ export function PiecewiseGraphToolModal({ onClose }) {
             <div className="piecewise-creation-controls">
               <label>
                 Plantilla
-                <select onChange={(event) => setSegments(PRESETS[event.target.value])} defaultValue="parcial">
+                <select value={preset} onChange={(event) => {
+                  setPreset(event.target.value);
+                  setSegments(PRESETS[event.target.value]);
+                }}>
                   <option value="parcial">Grafica por tramos tipo parcial</option>
                   <option value="noInjective">Ejemplo no inyectivo</option>
                   <option value="injective">Ejemplo inyectivo</option>
@@ -136,6 +141,19 @@ export function PiecewiseGraphToolModal({ onClose }) {
                 </select>
               </label>
             </div>
+            <ToolExampleButton
+              examples={[
+                { label: "función por tramos", preset: "parcial", segments: PRESETS.parcial },
+                { label: "función no inyectiva", preset: "noInjective", segments: PRESETS.noInjective },
+                { label: "función inyectiva", preset: "injective", segments: PRESETS.injective },
+              ]}
+              onLoad={(example) => {
+                setCreationError("");
+                setCreationMode("points");
+                setPreset(example.preset);
+                setSegments(example.segments.map((segment) => ({ ...segment })));
+              }}
+            />
 
             {creationMode === "points" && (
               <>
@@ -300,7 +318,7 @@ function PiecewiseSelect({ ariaLabel, value, options, onChange }) {
         }}
       >
         <span className="custom-select-label">{selected.label}</span>
-        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+        <span className="custom-select-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label={ariaLabel}>

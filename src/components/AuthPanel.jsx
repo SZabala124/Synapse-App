@@ -62,6 +62,10 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
       setError("Las contraseñas no coinciden.");
       return;
     }
+    if (mode === "signUp" && !isUnimetEmail(formData.get("email"))) {
+      setError("Para crear una cuenta nueva necesitas usar tu correo institucional @correo.unimet.edu.ve.");
+      return;
+    }
     if (mode === "signUp" && !termsAccepted) {
       setTermsOpen(true);
       return;
@@ -235,6 +239,9 @@ export function AuthPanel({ initialMode = "signIn", onBack, onAuthSuccess, conve
               onChange={(event) => updateAuthField("email", event.target.value)}
               required
             />
+            {mode === "signUp" && (
+              <small className="auth-email-note">Las cuentas nuevas requieren un correo UNIMET terminado en @correo.unimet.edu.ve.</small>
+            )}
           </label>
 
           {mode !== "forgotPassword" && (
@@ -428,6 +435,10 @@ function createLocalAccount(email, password, profile) {
   users[email] = user;
   writeUsers(users);
   return publicUser(user);
+}
+
+function isUnimetEmail(value) {
+  return /^[^\s@]+@correo\.unimet\.edu\.ve$/i.test(String(value ?? "").trim());
 }
 
 function signInLocalAccount(email, password) {

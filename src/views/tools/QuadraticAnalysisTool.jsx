@@ -2,6 +2,14 @@ import { useMemo, useRef, useState } from "react";
 import { LatexBlock } from "./latexReader";
 import { parseLinearTerms, polynomialToLatex, sanitizeAlgebraInput } from "./AlgebraOperationsTool";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { ToolExampleButton } from "./ToolExampleButton";
+
+const QUADRATIC_EXAMPLES = [
+  { label: "parábola con mínimo", mode: "general", expression: "2x^2+4x-6" },
+  { label: "parábola con máximo", mode: "general", expression: "-x^2+4x-3" },
+  { label: "forma vértice", mode: "vertex", expression: "3(x-2)^2-5" },
+  { label: "coeficientes", mode: "coefficients", coefficients: { a: "1", b: "-6", c: "8" } },
+];
 
 const FORM_OPTIONS = [
   { value: "general", label: "Forma general: ax^2 + bx + c" },
@@ -106,6 +114,14 @@ export function QuadraticAnalysisToolModal({ onClose }) {
             )}
 
             <p className="truth-tool-hint">Usa funciones cuadráticas sencillas con variable x. En forma vértice se acepta a(x-h)^2+k; en forma general, ax^2+bx+c.</p>
+            <ToolExampleButton
+              examples={QUADRATIC_EXAMPLES}
+              onLoad={(example) => {
+                setMode(example.mode);
+                if (example.expression) setExpression(example.expression);
+                if (example.coefficients) setCoefficients({ ...example.coefficients });
+              }}
+            />
             <button className="secondary-action truth-clear-button" type="button" onClick={() => mode === "coefficients" ? setCoefficients({ a: "", b: "", c: "" }) : setExpression("")}>
               Borrar datos
             </button>

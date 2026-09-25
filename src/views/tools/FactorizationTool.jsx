@@ -1,7 +1,16 @@
 import { useMemo, useRef, useState } from "react";
 import { LatexBlock } from "./latexReader";
-import { parseLinearTerms, polynomialToLatex, sanitizeAlgebraInput, simplifyPolynomial, termToLatex } from "./AlgebraOperationsTool";
+import { multiplyTerms, parseAlgebraTerm, polynomialToLatex, sanitizeAlgebraInput, simplifyPolynomial, termToLatex } from "./AlgebraOperationsTool";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { ToolExampleButton } from "./ToolExampleButton";
+
+const FACTORIZATION_EXAMPLES = [
+  { label: "factor común", mode: "common-factor", expression: "12x+18" },
+  { label: "agrupación", mode: "grouping", expression: "x^3+2x^2+3x+6" },
+  { label: "trinomio cuadrado perfecto", mode: "perfect-square", expression: "x^2+6x+9" },
+  { label: "diferencia de cuadrados", mode: "difference-squares", expression: "x^2-25" },
+  { label: "trinomio cuadrático", mode: "quadratic", expression: "x^2-5x+6" },
+];
 
 export function FactorizationToolModal({ onClose }) {
   const [mode, setMode] = useState("auto");
@@ -37,7 +46,7 @@ export function FactorizationToolModal({ onClose }) {
       <section className="course-detail-modal truth-tool-modal algebra-tool-modal">
         <header>
           <div>
-            <h2>Factorizacion</h2>
+            <h2>Factorización</h2>
             <ToolMetaTags topic="Factor común, agrupación y trinomios" />
           </div>
           <button className="quiet-button" type="button" onClick={onClose}>Cerrar</button>
@@ -50,20 +59,20 @@ export function FactorizationToolModal({ onClose }) {
               <select value={mode} onChange={(event) => setMode(event.target.value)}>
                 <option value="auto">Detectar automáticamente</option>
                 <option value="common-factor">Factor común</option>
-                <option value="grouping">Factorizacion por agrupacion</option>
+                <option value="grouping">Factorización por agrupación</option>
                 <option value="perfect-square">Trinomio cuadrado perfecto</option>
                 <option value="difference-squares">Diferencia de cuadrados</option>
                 <option value="quadratic">Trinomio de segundo grado</option>
               </select>
             </label>
             <label>
-              Expresion
+              Expresión
               <textarea
                 ref={expressionRef}
                 value={expression}
                 onChange={updateExpressionInput}
                 rows={4}
-                placeholder="Ej: 6x + 12"
+                placeholder="Ej: (6x + 12), (x + 1)(x + 2)"
               />
             </label>
             <div className="truth-operator-row algebra-operator-row" aria-label="Símbolos disponibles">
@@ -71,9 +80,16 @@ export function FactorizationToolModal({ onClose }) {
                 <button type="button" key={symbol} onClick={() => insertSymbol(symbol)}>{symbol}</button>
               ))}
             </div>
-            <p className="truth-tool-hint">Acepta polinomios simples con letras, exponentes, enteros, decimales y fracciones.</p>
+            <p className="truth-tool-hint">Acepta polinomios con paréntesis, multiplicación, exponentes, enteros, decimales y fracciones.</p>
+            <ToolExampleButton
+              examples={FACTORIZATION_EXAMPLES}
+              onLoad={(example) => {
+                setMode(example.mode);
+                setExpression(example.expression);
+              }}
+            />
             <button className="secondary-action truth-clear-button" type="button" onClick={() => setExpression("")} disabled={!expression}>
-              Borrar expresion
+              Borrar expresión
             </button>
           </form>
 
@@ -240,7 +256,83 @@ function factorQuadratic(terms) {
 }
 
 function parsePolynomial(expression) {
-  return simplifyPolynomial(parseLinearTerms(expression));
+  const tokens = expression.match(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?|[a-z]+|[()+\-*^]/g) ?? [];
+  if (tokens.join("") !== expression) throw new Error("Revisa la expresión: hay un símbolo o una operación que no puedo interpretar.");
+  let position = 0;
+
+  function parseExpression() {
+    let result = parseProduct();
+    while (tokens[position] === "+" || tokens[position] === "-") {
+      const operator = tokens[position++];
+      const next = parseProduct();
+      result = simplifyPolynomial([...result, ...next.map((term) => ({ ...term, coefficient: term.coefficient * (operator === "-" ? -1 : 1) }))]);
+    }
+    return result;
+  }
+
+  function parseProduct() {
+    let result = parseUnary();
+    while (position < tokens.length && tokens[position] !== ")" && tokens[position] !== "+" && tokens[position] !== "-") {
+      if (tokens[position] === "/") throw new Error("Usa las fracciones como coeficientes, por ejemplo 1/2x.");
+      if (tokens[position] === "*") position += 1;
+      else if (!isPrimaryStart(tokens[position])) break;
+      result = multiplyPolynomials(result, parseUnary());
+    }
+    return result;
+  }
+
+  function parseUnary() {
+    if (tokens[position] === "+") {
+      position += 1;
+      return parseUnary();
+    }
+    if (tokens[position] === "-") {
+      position += 1;
+      return parseUnary().map((term) => ({ ...term, coefficient: -term.coefficient }));
+    }
+    let result = parsePrimary();
+    if (tokens[position] === "^") {
+      position += 1;
+      const exponent = Number(tokens[position++]);
+      if (!Number.isInteger(exponent) || exponent < 0 || exponent > 8) throw new Error("Usa exponentes enteros entre 0 y 8.");
+      result = polynomialPower(result, exponent);
+    }
+    return result;
+  }
+
+  function parsePrimary() {
+    const token = tokens[position++];
+    if (!token) throw new Error("La expresión está incompleta.");
+    if (token === "(") {
+      const nested = parseExpression();
+      if (tokens[position++] !== ")") throw new Error("Falta cerrar un paréntesis.");
+      return nested;
+    }
+    if (token === ")") throw new Error("Hay un paréntesis de cierre sin pareja.");
+    if (!/^(?:\d|[a-z])/.test(token)) throw new Error(`No pude leer el término "${token}".`);
+    return [parseAlgebraTerm(token)];
+  }
+
+  const polynomial = parseExpression();
+  if (position < tokens.length) {
+    if (tokens[position] === ")") throw new Error("Hay un paréntesis de cierre sin pareja.");
+    throw new Error(`No pude interpretar "${tokens.slice(position).join("")}".`);
+  }
+  return simplifyPolynomial(polynomial);
+}
+
+function isPrimaryStart(token) {
+  return token === "(" || /^[a-z0-9]/.test(token ?? "");
+}
+
+function multiplyPolynomials(left, right) {
+  return simplifyPolynomial(left.flatMap((leftTerm) => right.map((rightTerm) => multiplyTerms(leftTerm, rightTerm))));
+}
+
+function polynomialPower(polynomial, exponent) {
+  let result = [{ coefficient: 1, variable: "", power: 0 }];
+  for (let count = 0; count < exponent; count += 1) result = multiplyPolynomials(result, polynomial);
+  return result;
 }
 
 function commonFactor(terms) {

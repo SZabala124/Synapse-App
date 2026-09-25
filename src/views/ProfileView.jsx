@@ -115,6 +115,20 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
               <small>Tipo de usuario</small>
               <strong>{formatUserPlan(mergedProfile)}</strong>
             </div>
+            <div className="profile-referral-inline" aria-labelledby="profile-referral-title">
+              <p className="eyebrow">Programa de referidos</p>
+              <h3 id="profile-referral-title">Tu código</h3>
+              <div className="profile-referral-code-row">
+                <code>{mergedProfile.referralCode || "Generando..."}</code>
+                <button className="quiet-button" type="button" onClick={copyReferralCode} disabled={!mergedProfile.referralCode}>
+                  {referralCopied ? "Copiado" : "Copiar"}
+                </button>
+              </div>
+              <small className="profile-referral-description">{referralRewardDescription(mergedProfile.plan)}</small>
+              {mergedProfile.nextPaymentDiscountPercent > 0 && (
+                <small className="profile-referral-reward">Tienes {mergedProfile.nextPaymentDiscountPercent}% de descuento acumulado. Se aplica hasta 100% por pago y el excedente queda para el siguiente.</small>
+              )}
+            </div>
             {pendingPayment && (
               <div className="profile-payment-pending">
                 <small>Pago pendiente</small>
@@ -198,24 +212,6 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
             </button>
           </div>
         </form>
-      </section>
-
-      <section className="profile-referral-section" aria-labelledby="profile-referral-title">
-        <div>
-          <p className="eyebrow">Programa de referidos</p>
-          <h2 id="profile-referral-title">Tu código de referido</h2>
-          <p>Compártelo para recibir recompensas cuando un pago referido sea aprobado.</p>
-          <small className="profile-referral-description">{referralRewardDescription(mergedProfile.plan)}</small>
-        </div>
-        <div className="profile-referral-code-row">
-          <code>{mergedProfile.referralCode || "Generando..."}</code>
-          <button className="quiet-button" type="button" onClick={copyReferralCode} disabled={!mergedProfile.referralCode}>
-            {referralCopied ? "Copiado" : "Copiar"}
-          </button>
-        </div>
-        {mergedProfile.nextPaymentDiscountPercent > 0 && (
-          <small className="profile-referral-reward">Tienes {mergedProfile.nextPaymentDiscountPercent}% de descuento acumulado. En cada pago se aplica hasta 100% y el excedente se guarda para el siguiente.</small>
-        )}
       </section>
 
       {onRemoveDevice && (

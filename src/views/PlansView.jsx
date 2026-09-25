@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { matchesFuzzySearch } from "../utils/fuzzySearch";
 
 const PAYMENT_TARGET = {
   nationalId: "31460195",
@@ -438,9 +439,7 @@ function BankSelect({ banks, value, onChange }) {
   const [search, setSearch] = useState("");
   const selected = banks.find((bank) => bank.code === value) ?? banks[0] ?? { code: value, label: "Selecciona un banco" };
   const filteredBanks = useMemo(() => {
-    const query = normalizeBankSearch(search);
-    if (!query) return banks;
-    return banks.filter((bank) => normalizeBankSearch(`${bank.label} ${bank.code}`).includes(query));
+    return banks.filter((bank) => matchesFuzzySearch(search, [bank.label, bank.code]));
   }, [banks, search]);
 
   function selectBank(bankCode) {
@@ -466,7 +465,7 @@ function BankSelect({ banks, value, onChange }) {
         }}
       >
         <span className="custom-select-label">{selected?.label}</span>
-        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+        <span className="custom-select-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label="Bancos venezolanos">
@@ -503,13 +502,6 @@ function BankSelect({ banks, value, onChange }) {
   );
 }
 
-function normalizeBankSearch(value) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
 
 function updatePaymentField(setForm, field, value) {
   setForm((current) => ({ ...current, [field]: value }));

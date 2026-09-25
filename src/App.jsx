@@ -21,6 +21,7 @@ import { CommentsView } from "./views/CommentsView";
 import { PlansView } from "./views/PlansView";
 import { PaymentsView } from "./views/PaymentsView";
 import { UsersView } from "./views/UsersView";
+import { matchesFuzzySearch } from "./utils/fuzzySearch";
 import logoUrl from "../Synapse.svg";
 
 const STORAGE_KEY = "synapse-academia-react-cache-v2";
@@ -230,6 +231,16 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
     }));
   }
 
+  function updateFlowStatuses(changes) {
+    setAppState((current) => ({
+      ...current,
+      flowStatuses: {
+        ...current.flowStatuses,
+        ...Object.fromEntries(changes.map(({ courseCode, status }) => [courseCode, status])),
+      },
+    }));
+  }
+
   const loadMoreTools = useCallback(() => {
     setToolLimit((current) => current + 6);
   }, []);
@@ -244,6 +255,10 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
     ...(isAdminForMaterialAccess ? ["users", "payments"] : ["plans"]),
   ];
   const currentRoute = allowedRoutes.includes(route) ? route : (isAdminForMaterialAccess ? "users" : "landing");
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentRoute]);
+
   const activeSubjects = useMemo(() => subjects.filter((subject) => ["Cursando", "Planificada"].includes(subject.status)), []);
   const nextActivity = activities[0];
   const materials = filterMaterials(appState.materials ?? [], materialSearch, materialFormat, materialLevel, materialSubject);
@@ -283,7 +298,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
               }}
             />
           ) : (
-            <FlowView flowPeriods={flowPeriods} flowStatuses={appState.flowStatuses} onStatusChange={updateFlowStatus} />
+            <FlowView flowPeriods={flowPeriods} flowStatuses={appState.flowStatuses} onStatusChange={updateFlowStatus} onPeriodStatusChange={updateFlowStatuses} />
           )
         )}
         {currentRoute === "materials" && (
@@ -443,15 +458,13 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
   const [confirmEditOpen, setConfirmEditOpen] = useState(false);
   const limit = selectionState.limit ?? 7;
   const availableSubjects = selectionState.availableSubjects ?? [];
-  const normalizedQuery = normalizeSearchTextLocal(query);
   const selectedSet = new Set(selectedCodes);
   const visibleSubjects = availableSubjects.filter((subject) => {
-    if (!normalizedQuery) return true;
-    return normalizeSearchTextLocal([
+    return matchesFuzzySearch(query, [
       subject.code,
       subject.name,
       subject.careers?.map((career) => career.name).join(" "),
-    ].join(" ")).includes(normalizedQuery);
+    ]);
   });
   const selectedSubjects = selectedCodes
     .map((code) => availableSubjects.find((subject) => subject.code === code))
@@ -1090,6 +1103,7 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
       materials={materials}
       subjects={materialSubjects}
       watermarkText={buildMaterialWatermark(currentUser)}
+      viewerUserId={currentUser.email}
       remoteStatus={!canLoadMaterials ? "Selecciona tus materias para cargar la biblioteca" : materialCatalog.status === "LoadingFirstPage" ? "Creando caché local" : ""}
       canAddMaterial={canAddMaterials}
       search={search}
@@ -1180,7 +1194,7 @@ function materialMatchesListFilters(row, listArgs = {}) {
   const format = listArgs.format && listArgs.format !== "Todos" ? listArgs.format : null;
   const level = listArgs.level && listArgs.level !== "Todos" ? listArgs.level : null;
   const subject = listArgs.subject && listArgs.subject !== "Todas" ? listArgs.subject : null;
-  const search = normalizeSearchTextLocal(listArgs.search);
+  const search = listArgs.search;
 
   if (listArgs.savedOnly && !row.saved) return false;
   if (format && !materialFormatMatches(row.format, format)) return false;
@@ -1188,14 +1202,14 @@ function materialMatchesListFilters(row, listArgs = {}) {
   if (subject && !materialSubjectIds(row).includes(subject)) return false;
   if (!search) return true;
 
-  return normalizeSearchTextLocal([row.title, materialSubjectIds(row).join(" "), row.format, row.level, row.fileName].join(" ")).includes(search);
+  return matchesFuzzySearch(search, [row.title, materialSubjectIds(row).join(" "), row.format, row.level, row.fileName]);
 }
 
 function materialMatchesFacetBase(row, facetArgs = {}) {
   if (facetArgs.savedOnly) return Boolean(row.saved);
-  const search = normalizeSearchTextLocal(facetArgs.search);
+  const search = facetArgs.search;
   if (!search) return true;
-  return normalizeSearchTextLocal([row.title, materialSubjectIds(row).join(" "), row.format, row.level, row.fileName].join(" ")).includes(search);
+  return matchesFuzzySearch(search, [row.title, materialSubjectIds(row).join(" "), row.format, row.level, row.fileName]);
 }
 
 function materialMatchesFacetFilters(row, facetArgs = {}) {
@@ -1320,14 +1334,6 @@ function toOptimisticDocumentRow(id, document, timestamp, ownerEmail) {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-}
-
-function normalizeSearchTextLocal(value) {
-  return String(value ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
 }
 
 function estimateJsonBytes(value) {
@@ -1595,7 +1601,12 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
     ttlMs: 1000 * 60 * 60,
   });
   const setStatus = useMutation(api.flows.setStatus);
+  const setPeriodStatuses = useMutation(api.flows.setPeriodStatuses);
+  const setDifficultyRating = useMutation(api.flows.setDifficultyRating);
   const [optimisticStatuses, setOptimisticStatuses] = useState({});
+  const [optimisticDifficultyRatings, setOptimisticDifficultyRatings] = useState({});
+  const [difficultyRatingError, setDifficultyRatingError] = useState("");
+  const [flowStatusError, setFlowStatusError] = useState("");
   const isAdminUser = access?.userType === "admin" || (access === undefined && ADMIN_EMAIL_FALLBACKS.includes(currentUser.email.toLowerCase()));
   const allowedSubjectCodes = getSelectedSubjectCodeSet(currentUser, isAdminUser || canSeeAllCareerSubjects);
   const catalogRows = canLoadMaterials ? materialCatalog.results ?? [] : [];
@@ -1622,6 +1633,11 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
     if (!flowData?.statuses) return;
     setOptimisticStatuses(flowData.statuses);
   }, [flowData?.id, flowData?.statuses]);
+
+  useEffect(() => {
+    if (!flowData) return;
+    setOptimisticDifficultyRatings(flowData.difficultyRatings ?? {});
+  }, [flowData?.id, flowData?.difficultyRatings]);
 
   useEffect(() => {
     if (!flowData?.statuses) return;
@@ -1651,6 +1667,59 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
     console.info(`[Synapse flow] ${courseName}: ${changeLabel} · ${payloadSize}`);
   }
 
+  async function updatePeriodStatuses(changes) {
+    const previousStatuses = optimisticStatuses;
+    const nextStatuses = { ...previousStatuses, ...Object.fromEntries(changes.map(({ courseCode, status }) => [courseCode, status])) };
+    setOptimisticStatuses(nextStatuses);
+    setFlowStatusError("");
+    const cachedFlows = [];
+    allowedCareerIds.forEach((careerId) => {
+      const careerArgs = { career: careerId, userEmail: currentUser.email };
+      const cachedFlow = readConvexCache("flows.getFlow", careerArgs, { allowStale: true, fallback: null })
+        ?? (careerId === career ? flowData : null);
+      if (!cachedFlow) return;
+      const nextFlow = { ...cachedFlow, statuses: { ...(cachedFlow.statuses ?? {}), ...Object.fromEntries(changes.map(({ courseCode, status }) => [courseCode, status])) } };
+      cachedFlows.push({ careerArgs, cachedFlow });
+      writeConvexCache("flows.getFlow", careerArgs, nextFlow);
+    });
+
+    try {
+      const result = await setPeriodStatuses({
+        userEmail: currentUser.email,
+        career,
+        changes: changes.map(({ courseCode, status }) => ({ courseCode, status })),
+      });
+      console.info(`[Synapse flow] Periodo: ${changes.length} materias actualizadas · ${formatApproxBytes(result?.payloadBytes ?? estimateJsonBytes(result))}`);
+    } catch (error) {
+      setOptimisticStatuses(previousStatuses);
+      cachedFlows.forEach(({ careerArgs, cachedFlow }) => writeConvexCache("flows.getFlow", careerArgs, cachedFlow));
+      setFlowStatusError(error?.message ?? "No se pudieron guardar los estados del periodo.");
+    }
+  }
+
+  async function updateDifficultyRating(courseCode, stars) {
+    if (!isAdminUser) return;
+    const previousRatings = optimisticDifficultyRatings;
+    const nextRatings = { ...previousRatings, [courseCode]: stars };
+    const flowArgs = { career, userEmail: currentUser.email };
+    setOptimisticDifficultyRatings(nextRatings);
+    setDifficultyRatingError("");
+    const cachedFlow = readConvexCache("flows.getFlow", flowArgs, { allowStale: true, fallback: null }) ?? flowData;
+    if (cachedFlow) {
+      writeConvexCache("flows.getFlow", flowArgs, { ...cachedFlow, difficultyRatings: nextRatings });
+    }
+
+    try {
+      await setDifficultyRating({ adminEmail: currentUser.email, career, courseCode, stars });
+    } catch (error) {
+      setOptimisticDifficultyRatings(previousRatings);
+      setDifficultyRatingError(error?.message ?? "No se pudo guardar la dificultad de la materia.");
+      if (cachedFlow) {
+        writeConvexCache("flows.getFlow", flowArgs, { ...cachedFlow, difficultyRatings: previousRatings });
+      }
+    }
+  }
+
   if (!flowData) {
     return (
       <section className="workspace">
@@ -1669,6 +1738,8 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
     <FlowView
       flowPeriods={flowData.periods}
       flowStatuses={optimisticStatuses}
+      difficultyRatings={optimisticDifficultyRatings}
+      isAdmin={isAdminUser}
       flowProgram={flowData}
       materials={flowMaterials}
       careers={allowedCareers}
@@ -1676,6 +1747,10 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
       cacheStatus={isFromCache ? "Vista guardada localmente" : "Datos actualizados"}
       onCareerChange={setCareer}
       onStatusChange={updateStatus}
+      onPeriodStatusChange={updatePeriodStatuses}
+      onDifficultyRatingChange={updateDifficultyRating}
+      difficultyRatingError={difficultyRatingError}
+      flowStatusError={flowStatusError}
       onOpenMaterialInLibrary={onOpenMaterialInLibrary}
     />
   );
@@ -1695,23 +1770,14 @@ function toProfileArgs(user) {
 }
 
 function filterMaterials(materials, search, format, level = "Todos", subject = "Todas") {
-  const query = normalizeSearchText(search);
   return materials.filter((material) => {
     const subjectIds = materialSubjectIds(material);
-    const matchesSearch = !query || normalizeSearchText([material.title, subjectIds.join(" "), material.format, material.source, material.level].join(" ")).includes(query);
+    const matchesSearch = matchesFuzzySearch(search, [material.title, subjectIds.join(" "), material.format, material.source, material.level]);
     const matchesFormat = format === "Todos" || material.format === format;
     const matchesLevel = level === "Todos" || material.level === level;
     const matchesSubject = subject === "Todas" || subjectIds.includes(subject);
     return matchesSearch && matchesFormat && matchesLevel && matchesSubject;
   });
-}
-
-function normalizeSearchText(value) {
-  return String(value ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
 }
 
 function persistLocalUserProfile(user) {

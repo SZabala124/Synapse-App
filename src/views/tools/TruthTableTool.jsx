@@ -1,5 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { ToolExampleButton } from "./ToolExampleButton";
+
+const LOGIC_EXAMPLES = [
+  { label: "conjunción", variableCount: 2, expression: "p ∧ q" },
+  { label: "implicación", variableCount: 2, expression: "(p ∨ q) → p" },
+  { label: "tres variables", variableCount: 3, expression: "(p ∧ q) ↔ r" },
+  { label: "cuatro variables", variableCount: 4, expression: "(p → q) ∧ (r ↔ s)" },
+];
 
 export function TruthTableModal({ onClose }) {
   const [variableCount, setVariableCount] = useState(2);
@@ -75,6 +83,13 @@ export function TruthTableModal({ onClose }) {
               ))}
             </div>
             <p className="truth-tool-hint">También puedes escribir !, ~, &, ^, | o v como atajos. Usa solo las variables seleccionadas.</p>
+            <ToolExampleButton
+              examples={LOGIC_EXAMPLES}
+              onLoad={(example) => {
+                setVariableCount(example.variableCount);
+                setExpression(example.expression);
+              }}
+            />
             <button className="secondary-action truth-clear-button" type="button" onClick={() => setExpression("")} disabled={!expression}>
               Borrar proposición
             </button>

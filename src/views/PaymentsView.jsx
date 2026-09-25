@@ -120,7 +120,7 @@ function PaymentStatusSelect({ value, onChange }) {
         }}
       >
         <span className="custom-select-label">{selected.label}</span>
-        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+        <span className="custom-select-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label="Estados de pago">

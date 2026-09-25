@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { flowPrograms as curriculumPrograms } from "../../convex/flowData";
 import { RatingSummary } from "./MaterialsView";
+import { matchesFuzzySearch } from "../utils/fuzzySearch";
 
 const statusOptions = ["Cursada", "En curso", "Planificada", "Pendiente"];
+const difficultyLabels = ["Sin calificar", "Muy Fácil", "Fácil", "Medio", "Difícil", "Muy Difícil", "Extremo"];
 const additionalRequirementsByCareer = {
   sistemas: [
     { code: "BPTDI01", name: "Servicio comunitario", note: "FGTDI01 y 90 créditos requeridos" },
@@ -29,7 +32,13 @@ const additionalRequirementsByCareer = {
 export function FlowView({
   flowPeriods,
   flowStatuses,
+  difficultyRatings = {},
+  isAdmin = false,
   onStatusChange,
+  onPeriodStatusChange,
+  onDifficultyRatingChange,
+  difficultyRatingError = "",
+  flowStatusError = "",
   flowProgram,
   materials = [],
   careers = [],
@@ -44,8 +53,43 @@ export function FlowView({
   const [openMenu, setOpenMenu] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [requirementNotice, setRequirementNotice] = useState(null);
+  const [statusChangeConfirmation, setStatusChangeConfirmation] = useState(null);
+  const [activeSubsection, setActiveSubsection] = useState("flow");
+  const [ratingSort, setRatingSort] = useState("desc");
+  const [ratingSearch, setRatingSearch] = useState("");
 
-  const allCourses = useMemo(() => flowPeriods.flat(), [flowPeriods]);
+  const officialCourseNames = useMemo(() => {
+    const names = new Map();
+    curriculumPrograms.forEach((program) => {
+      program.periods.flat().forEach((course) => {
+        const code = normalizeCourseCode(course.code);
+        const name = String(course.name ?? "").trim();
+        if (!names.has(code) && name && normalizeCourseCode(name) !== code) {
+          names.set(code, name);
+        }
+      });
+    });
+    return names;
+  }, []);
+  const flowPeriodsWithIds = useMemo(() => flowPeriods.map((period, periodIndex) =>
+    period.map((course, courseIndex) => ({
+      ...course,
+      name: resolveCourseName(course, officialCourseNames),
+      id: course.id ?? `${selectedCareer}-${periodIndex + 1}-${courseIndex + 1}-${course.code}`,
+    })),
+  ), [flowPeriods, officialCourseNames, selectedCareer]);
+  const allCourses = useMemo(() => flowPeriodsWithIds.flat(), [flowPeriodsWithIds]);
+  const rankedCourses = useMemo(() => allCourses
+    .map((course) => ({ course, stars: difficultyRatings[course.code] ?? 0 }))
+    .sort((a, b) => {
+      if (!a.stars && b.stars) return 1;
+      if (a.stars && !b.stars) return -1;
+      const starDifference = ratingSort === "desc" ? b.stars - a.stars : a.stars - b.stars;
+      return starDifference || a.course.name.localeCompare(b.course.name) || a.course.id.localeCompare(b.course.id);
+    }), [allCourses, difficultyRatings, ratingSort]);
+  const searchedCourses = useMemo(() => rankedCourses.filter(({ course }) =>
+    matchesCourseSearch(ratingSearch, course),
+  ), [rankedCourses, ratingSearch]);
   const completed = allCourses.filter((course) => visibleStatus(course, flowStatuses, allCourses) === "Cursada");
   const totalCourses = allCourses.length;
   const credits = completed.reduce((sum, course) => sum + course.credits, 0);
@@ -89,18 +133,66 @@ export function FlowView({
   }
 
   function updateStatus(course, nextStatus) {
-    const currentStatus = flowStatuses[course.code] ?? course.status;
+    const currentStatus = flowStatuses[courseKey(course)] ?? course.status;
     const descendants = getDescendants(course.code, allCourses);
 
     if (currentStatus === "Cursada" && nextStatus !== "Cursada" && descendants.length > 0) {
-      const confirmed = window.confirm(
-        `Esta materia desbloquea ${descendants.length} materia(s). Si la quitas de cursada, sus materias hijas volverán a pendiente/bloqueadas. ¿Deseas continuar?`,
-      );
-      if (!confirmed) return;
-      descendants.forEach((child) => onStatusChange(courseKey(child), "Pendiente", child.name));
+      setStatusChangeConfirmation({ course, nextStatus, descendants });
+      setOpenMenu(null);
+      return;
     }
 
+    applyStatusChange(course, nextStatus);
+  }
+
+  function applyStatusChange(course, nextStatus, descendants = []) {
+    descendants.forEach((child) => onStatusChange(courseKey(child), "Pendiente", child.name));
     onStatusChange(courseKey(course), nextStatus, course.name);
+    setOpenMenu(null);
+  }
+
+  function updatePeriodStatus(courses, nextStatus, periodNumber) {
+    const availableCourses = courses.filter((course) => !isLocked(course, flowStatuses, allCourses));
+    if (availableCourses.length === 0) {
+      const blockedCourse = courses.find((course) => isLocked(course, flowStatuses, allCourses));
+      if (blockedCourse) setRequirementNotice({ course: blockedCourse, requirements: missingRequirementDetails(blockedCourse, flowStatuses, allCourses) });
+      return;
+    }
+
+    const targetKeys = new Set(availableCourses.map(courseKey));
+    const affectedDescendants = new Map();
+    if (nextStatus !== "Cursada") {
+      availableCourses.forEach((course) => {
+        const currentStatus = flowStatuses[courseKey(course)] ?? course.status;
+        if (currentStatus !== "Cursada") return;
+        getDescendants(course.code, allCourses).forEach((descendant) => {
+          const key = courseKey(descendant);
+          if (!targetKeys.has(key)) affectedDescendants.set(key, descendant);
+        });
+      });
+    }
+
+    const descendants = Array.from(affectedDescendants.values());
+    if (descendants.length > 0) {
+      setStatusChangeConfirmation({ periodNumber, periodCourses: availableCourses, nextStatus, descendants });
+      setOpenMenu(null);
+      return;
+    }
+
+    applyPeriodStatusChange(availableCourses, nextStatus);
+  }
+
+  function applyPeriodStatusChange(courses, nextStatus, descendants = []) {
+    const changesByKey = new Map();
+    const periodKeys = new Set(courses.map(courseKey));
+    descendants.forEach((course) => {
+      if (!periodKeys.has(courseKey(course))) changesByKey.set(courseKey(course), { courseCode: courseKey(course), status: "Pendiente", courseName: course.name });
+    });
+    courses.forEach((course) => changesByKey.set(courseKey(course), { courseCode: courseKey(course), status: nextStatus, courseName: course.name }));
+    const changes = Array.from(changesByKey.values());
+
+    if (onPeriodStatusChange) onPeriodStatusChange(changes);
+    else changes.forEach((change) => onStatusChange(change.courseCode, change.status, change.courseName));
     setOpenMenu(null);
   }
 
@@ -140,6 +232,7 @@ export function FlowView({
   }
 
   function endDrag(event) {
+    if (!dragRef.current.active) return;
     if (dragRef.current.frame) {
       window.cancelAnimationFrame(dragRef.current.frame);
       dragRef.current.frame = 0;
@@ -193,9 +286,11 @@ export function FlowView({
       <section className="career-flow-panel">
         <div className="flow-toolbar">
           <div>
-            <h2>Flujograma interactivo</h2>
+            <h2>{activeSubsection === "flow" ? "Flujograma interactivo" : "Calificaciones de materias"}</h2>
             <p className="meta-line flow-context-line">
-              <span>Arrastra el tablero para moverte. Pulsa la tarjeta para ver detalles.</span>
+              <span>{activeSubsection === "flow"
+                ? "Arrastra el tablero para moverte. Pulsa la tarjeta para ver detalles."
+                : "Consulta la dificultad de las materias según las estrellas asignadas."}</span>
             </p>
           </div>
           {canSwitchCareer && (
@@ -205,15 +300,58 @@ export function FlowView({
               onChange={(value) => onCareerChange?.(value)}
             />
           )}
-          <div className="flow-status-legend" aria-label="Estados del flujograma">
-            <span className="flow-status is-completed">Cursada</span>
-            <span className="flow-status is-current">En curso</span>
-            <span className="flow-status is-planned">Planificada</span>
-            <span className="flow-status is-pending">Pendiente</span>
-            <span className="flow-status is-locked">Bloqueada</span>
-          </div>
+          {activeSubsection === "flow" ? (
+            <div className="flow-status-legend" aria-label="Estados del flujograma">
+              <span className="flow-status is-completed">Cursada</span>
+              <span className="flow-status is-current">En curso</span>
+              <span className="flow-status is-planned">Planificada</span>
+              <span className="flow-status is-pending">Pendiente</span>
+              <span className="flow-status is-locked">Bloqueada</span>
+            </div>
+          ) : (
+            <div className="flow-rating-order" role="group" aria-label="Ordenar calificaciones">
+              <button
+                className={ratingSort === "desc" ? "is-active" : ""}
+                type="button"
+                aria-pressed={ratingSort === "desc"}
+                onClick={() => setRatingSort("desc")}
+              >Mayor a menor</button>
+              <button
+                className={ratingSort === "asc" ? "is-active" : ""}
+                type="button"
+                aria-pressed={ratingSort === "asc"}
+                onClick={() => setRatingSort("asc")}
+              >Menor a mayor</button>
+            </div>
+          )}
         </div>
 
+        <div className="flow-subsection-tabs" role="tablist" aria-label="Secciones del flujograma">
+          <button
+            id="flow-tab-board"
+            className={activeSubsection === "flow" ? "is-active" : ""}
+            type="button"
+            role="tab"
+            aria-selected={activeSubsection === "flow"}
+            aria-controls="flow-panel-board"
+            onClick={() => setActiveSubsection("flow")}
+          >Flujograma</button>
+          <button
+            id="flow-tab-ratings"
+            className={activeSubsection === "ratings" ? "is-active" : ""}
+            type="button"
+            role="tab"
+            aria-selected={activeSubsection === "ratings"}
+            aria-controls="flow-panel-ratings"
+            onClick={() => setActiveSubsection("ratings")}
+          >Calificaciones</button>
+        </div>
+
+        {difficultyRatingError && <p className="flow-rating-error" role="alert">{difficultyRatingError}</p>}
+        {flowStatusError && <p className="flow-rating-error" role="alert">{flowStatusError}</p>}
+
+        {activeSubsection === "flow" ? (
+          <div id="flow-panel-board" role="tabpanel" aria-labelledby="flow-tab-board">
         <div
           className="flow-board"
           aria-label="Flujograma por periodos"
@@ -226,11 +364,34 @@ export function FlowView({
           onScroll={rememberBoardScroll}
           onClickCapture={suppressClickAfterDrag}
         >
-          {flowPeriods.map((courses, index) => (
+          {flowPeriodsWithIds.map((courses, index) => (
             <section className="flow-period" key={index}>
               <div className="flow-period-header">
                 <span>{index + 1}</span>
                 <strong>Periodo</strong>
+                {(() => {
+                  const rawStatuses = courses.map((course) => flowStatuses[courseKey(course)] ?? course.status);
+                  const currentStatus = rawStatuses.every((status) => status === rawStatuses[0]) ? rawStatuses[0] : "Mixto";
+                  const periodMenuKey = `period-${index}`;
+                  const lockedCount = courses.filter((course) => isLocked(course, flowStatuses, allCourses)).length;
+                  return (
+                    <button
+                      className={`flow-status flow-period-status-trigger ${statusOptions.includes(currentStatus) ? statusClass(currentStatus) : "is-pending"}`}
+                      type="button"
+                      aria-label={`Cambiar estado de todas las materias del periodo ${index + 1}`}
+                      aria-haspopup="listbox"
+                      aria-expanded={openMenu?.key === periodMenuKey}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setOpenMenu({ key: periodMenuKey, x: rect.left, y: rect.bottom + 8, label: `Cambiar estado del periodo ${index + 1}`, description: lockedCount ? `${lockedCount} materia${lockedCount === 1 ? " bloqueada" : "s bloqueadas"} por prelación no cambiarán.` : "Se actualizarán las materias desbloqueadas del periodo." });
+                      }}
+                    >
+                      <span>{statusOptions.includes(currentStatus) ? currentStatus : "Cambiar estado"}</span>
+                      <span className="flow-period-status-chevron" aria-hidden="true" />
+                    </button>
+                  );
+                })()}
               </div>
               <div className="flow-course-list">
                 {courses.map((course, courseIndex) => {
@@ -251,11 +412,19 @@ export function FlowView({
                       <span className="flow-prereq">{course.prereq || "Sin prelación"}</span>
                       <strong className="flow-course-code">{course.code}</strong>
                       <h3 className="flow-course-name">{course.name}</h3>
+                      <DifficultyStars
+                        stars={difficultyRatings[course.code] ?? 0}
+                        canEdit={isAdmin}
+                        onChange={(stars) => onDifficultyRatingChange?.(course.code, stars)}
+                        label={`Dificultad de ${course.name}`}
+                      />
                       <div className="flow-card-tags">
                         <button
-                          className={`flow-status ${statusClass(status)}`}
+                          className={`flow-status ${statusClass(status)} flow-status-dropdown`}
                           data-flow-status-trigger
                           type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={openMenu?.key === renderKey}
                           onClick={(event) => {
                             event.stopPropagation();
                             if (locked) {
@@ -268,7 +437,6 @@ export function FlowView({
                         >
                           {status}
                         </button>
-                        {locked && <span className="flow-lock-note">Requiere prelación</span>}
                       </div>
                       <div className="flow-hours">
                         <span><b>A</b>{course.hours?.a ?? 4}</span>
@@ -292,6 +460,18 @@ export function FlowView({
                   );
                 })}
               </div>
+              {openMenu?.key === `period-${index}` && createPortal(
+                <StatusMenu
+                  x={openMenu.x}
+                  y={openMenu.y}
+                  rawStatus=""
+                  label={openMenu.label}
+                  description={openMenu.description}
+                  onClose={() => setOpenMenu(null)}
+                  onSelect={(option) => updatePeriodStatus(courses, option, index + 1)}
+                />,
+                document.body,
+              )}
             </section>
           ))}
         </div>
@@ -319,6 +499,53 @@ export function FlowView({
             </dl>
           </section>
         </div>
+          </div>
+        ) : (
+          <div id="flow-panel-ratings" className="flow-ratings-panel" role="tabpanel" aria-labelledby="flow-tab-ratings">
+            <label className="flow-ratings-search">
+              <span>Buscar materia</span>
+              <input
+                type="search"
+                value={ratingSearch}
+                onChange={(event) => setRatingSearch(event.target.value)}
+                placeholder="Nombre o código..."
+                aria-label="Buscar materia por nombre o código"
+              />
+            </label>
+            <div className="flow-ratings-table-wrap">
+              <table className="flow-ratings-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Materia</th>
+                    <th scope="col">Código</th>
+                    <th scope="col">Estrellas</th>
+                    <th scope="col">Dificultad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchedCourses.length === 0 && (
+                    <tr><td className="flow-ratings-empty" colSpan={4}>No se encontraron materias.</td></tr>
+                  )}
+                  {searchedCourses.map(({ course, stars }) => (
+                    <tr key={course.id}>
+                      <th scope="row">{course.name}</th>
+                      <td>{course.code}</td>
+                      <td>
+                        <DifficultyStars
+                          stars={stars}
+                          canEdit={isAdmin}
+                          onChange={(nextStars) => onDifficultyRatingChange?.(course.code, nextStars)}
+                          label={`Dificultad de ${course.name}`}
+                        />
+                      </td>
+                      <td><span className={`flow-rating-tag is-level-${stars || "unrated"}`}>{difficultyLabels[stars]}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       {requirementNotice && createPortal(
@@ -329,10 +556,32 @@ export function FlowView({
         <CourseModal
           course={selectedCourse}
           status={visibleStatus(selectedCourse, flowStatuses, allCourses)}
+          difficultyStars={difficultyRatings[selectedCourse.code] ?? 0}
+          isAdmin={isAdmin}
           allCourses={allCourses}
           materials={materials}
+          onStatusChange={(nextStatus) => updateStatus(selectedCourse, nextStatus)}
+          onDifficultyRatingChange={(stars) => onDifficultyRatingChange?.(selectedCourse.code, stars)}
           onOpenMaterialInLibrary={onOpenMaterialInLibrary}
           onClose={() => setSelectedCourse(null)}
+        />,
+        document.body,
+      )}
+      {statusChangeConfirmation && createPortal(
+        <StatusChangeModal
+          course={statusChangeConfirmation.course}
+          nextStatus={statusChangeConfirmation.nextStatus}
+          affectedCount={statusChangeConfirmation.descendants.length}
+          onCancel={() => setStatusChangeConfirmation(null)}
+          onConfirm={() => {
+            if (statusChangeConfirmation.periodCourses) {
+              applyPeriodStatusChange(statusChangeConfirmation.periodCourses, statusChangeConfirmation.nextStatus, statusChangeConfirmation.descendants);
+            } else {
+              applyStatusChange(statusChangeConfirmation.course, statusChangeConfirmation.nextStatus, statusChangeConfirmation.descendants);
+            }
+            setStatusChangeConfirmation(null);
+          }}
+          periodNumber={statusChangeConfirmation.periodNumber}
         />,
         document.body,
       )}
@@ -367,7 +616,7 @@ function CareerSelect({ options, value, onChange }) {
         onClick={() => setOpen((current) => !current)}
       >
         <span className="custom-select-label">{selected.name}</span>
-        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+        <span className="custom-select-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" aria-label="Seleccionar programa">
@@ -395,7 +644,7 @@ function CareerSelect({ options, value, onChange }) {
   );
 }
 
-function StatusMenu({ x, y, rawStatus, onSelect, onClose }) {
+function StatusMenu({ x, y, rawStatus, label = "Cambiar estado", description = "", onSelect, onClose }) {
   return (
     <>
       <button
@@ -414,16 +663,21 @@ function StatusMenu({ x, y, rawStatus, onSelect, onClose }) {
       />
       <div
         className="flow-status-menu is-visible"
+        role="listbox"
+        aria-label={label === "Cambiar estado" ? "Cambiar estado de la materia" : label}
         style={{ left: x, top: y }}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <span>Cambiar estado</span>
+        <span aria-hidden="true">{label}</span>
+        {description && <small>{description}</small>}
         {statusOptions.map((option) => (
           <button
             className={`flow-status-option ${statusClass(option)}`}
             key={option}
             type="button"
+            role="option"
+            aria-selected={option === rawStatus}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -468,7 +722,56 @@ function NoticeModal({ notice, onClose }) {
   );
 }
 
-function CourseModal({ course, status, allCourses, materials, onClose, onOpenMaterialInLibrary }) {
+function DifficultyStars({ stars, canEdit, onChange, label }) {
+  return (
+    <div className={canEdit ? "flow-difficulty is-editable" : "flow-difficulty"} aria-label={`${label}: ${stars} de 6 estrellas`}>
+      <span className="flow-difficulty-label">
+        <span className="flow-difficulty-label-desktop">Dificultad</span>
+        <span className="flow-difficulty-label-mobile">Dif.</span>
+      </span>
+      <div className="flow-difficulty-stars" role={canEdit ? "group" : undefined} aria-label={label}>
+        {Array.from({ length: 6 }, (_, index) => {
+          const value = index + 1;
+          const active = value <= stars;
+          return canEdit ? (
+            <button
+              className={active ? "flow-difficulty-star is-active" : "flow-difficulty-star"}
+              key={value}
+              type="button"
+              aria-label={`${value} ${value === 1 ? "estrella" : "estrellas"}`}
+              aria-pressed={stars === value}
+              title={`Asignar ${value} ${value === 1 ? "estrella" : "estrellas"}`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onChange?.(value);
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              ★
+            </button>
+          ) : (
+            <span className={active ? "flow-difficulty-star is-active" : "flow-difficulty-star"} key={value} aria-hidden="true">★</span>
+          );
+        })}
+      </div>
+      <span className="flow-difficulty-count">{stars || "–"}/6</span>
+    </div>
+  );
+}
+
+function CourseModal({
+  course,
+  status,
+  difficultyStars,
+  isAdmin,
+  allCourses,
+  materials,
+  onClose,
+  onStatusChange,
+  onDifficultyRatingChange,
+  onOpenMaterialInLibrary,
+}) {
   const prereqText = formatPrereq(course.prereq, allCourses);
   const courseMaterials = materialsForCourse(course, materials);
 
@@ -489,9 +792,21 @@ function CourseModal({ course, status, allCourses, materials, onClose, onOpenMat
           </header>
           <div className="course-detail-body">
             <div className="course-detail-status">
-              <span className={`flow-status ${statusClass(status)}`}>{status}</span>
+              <label className="course-detail-status-select">
+                Estado
+                <CourseStatusDropdown
+                  status={status === "Bloqueada" ? "Pendiente" : status}
+                  onSelect={onStatusChange}
+                />
+              </label>
               <span className="flow-status is-pending">{prereqText}</span>
             </div>
+            <DifficultyStars
+              stars={difficultyStars}
+              canEdit={isAdmin}
+              onChange={onDifficultyRatingChange}
+              label={`Dificultad de ${course.name}`}
+            />
             <dl className="course-detail-grid">
               <div><dt>Creditos</dt><dd>{course.credits}</dd></div>
               <div><dt>Horas</dt><dd>A {course.hours?.a ?? 4} · PS {course.hours?.ps ?? 0} · L {course.hours?.l ?? 0} · AA {course.hours?.aa ?? 4}</dd></div>
@@ -538,6 +853,79 @@ function CourseModal({ course, status, allCourses, materials, onClose, onOpenMat
   );
 }
 
+function CourseStatusDropdown({ status, onSelect }) {
+  const [menuPosition, setMenuPosition] = useState(null);
+
+  useEffect(() => {
+    if (!menuPosition) return undefined;
+    const closeMenu = () => setMenuPosition(null);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [menuPosition]);
+
+  return (
+    <>
+      <button
+        className={`flow-status ${statusClass(status)} flow-status-dropdown course-detail-status-trigger`}
+        type="button"
+        data-flow-status-trigger
+        aria-haspopup="listbox"
+        aria-expanded={Boolean(menuPosition)}
+        onClick={(event) => {
+          if (menuPosition) {
+            setMenuPosition(null);
+            return;
+          }
+          const rect = event.currentTarget.getBoundingClientRect();
+          setMenuPosition({ x: rect.left, y: rect.bottom + 6 });
+        }}
+      >
+        {status}
+      </button>
+      {menuPosition && createPortal(
+        <StatusMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          rawStatus={status}
+          onClose={() => setMenuPosition(null)}
+          onSelect={(nextStatus) => {
+            setMenuPosition(null);
+            onSelect?.(nextStatus);
+          }}
+        />,
+        document.body,
+      )}
+    </>
+  );
+}
+
+function StatusChangeModal({ course, periodNumber, nextStatus, affectedCount, onCancel, onConfirm }) {
+  return (
+    <div className="course-detail-overlay flow-status-confirm-overlay is-visible" role="dialog" aria-modal="true" aria-labelledby="flow-status-confirm-title">
+      <section className="course-detail-modal flow-status-confirm-modal">
+        <header>
+          <div>
+            <p className="eyebrow">Cambio de estado</p>
+            <h2 id="flow-status-confirm-title">{periodNumber ? `¿Cambiar periodo ${periodNumber}?` : `¿Cambiar ${course.code}?`}</h2>
+          </div>
+          <button className="quiet-button" type="button" onClick={onCancel}>Cerrar</button>
+        </header>
+        <div className="course-detail-body">
+          <p>{periodNumber ? `Este cambio afecta ${affectedCount} materia${affectedCount === 1 ? "" : "s"} dependiente${affectedCount === 1 ? "" : "s"}. Al cambiar las materias desbloqueadas del periodo a “${nextStatus}”, sus dependientes volverán a pendiente o bloqueadas.` : `Esta materia desbloquea ${affectedCount} materia${affectedCount === 1 ? "" : "s"}. Al cambiarla a “${nextStatus}”, sus materias dependientes volverán a pendiente o bloqueadas.`}</p>
+          <div className="flow-status-confirm-actions">
+            <button className="secondary-action" type="button" onClick={onCancel}>Cancelar</button>
+            <button className="primary-action" type="button" onClick={onConfirm}>Cambiar estado</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function materialsForCourse(course, materials) {
   const code = normalizeText(course.code);
   const name = normalizeText(course.name);
@@ -559,6 +947,10 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function matchesCourseSearch(query, course) {
+  return matchesFuzzySearch(query, [course.name, course.code]);
 }
 
 function visibleStatus(course, statuses, allCourses) {
@@ -631,5 +1023,18 @@ function statusClass(status) {
 }
 
 function courseKey(course) {
-  return course.code;
+  return course.code === "FGE" ? `FGE::${course.id}` : course.code;
+}
+
+function resolveCourseName(course, officialCourseNames) {
+  const code = normalizeCourseCode(course.code);
+  const name = String(course.name ?? "").trim();
+  if (!name || normalizeCourseCode(name) === code) {
+    return officialCourseNames.get(code) || name || course.code;
+  }
+  return name;
+}
+
+function normalizeCourseCode(value) {
+  return String(value ?? "").trim().toLocaleUpperCase();
 }

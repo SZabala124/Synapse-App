@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { matchesFuzzySearch } from "../utils/fuzzySearch";
 
 const CAREER_LABELS = {
   sistemas: "Sistemas",
@@ -240,20 +241,10 @@ function formatDate(timestamp) {
 }
 
 function filterUsers(users, search) {
-  const query = normalizeSearchText(search);
-  if (!query) return users;
-  return users.filter((user) => normalizeSearchText([
+  return users.filter((user) => matchesFuzzySearch(search, [
     user.firstName,
     user.lastName,
     fullName(user),
     user.email,
-  ].join(" ")).includes(query));
-}
-
-function normalizeSearchText(value) {
-  return String(value ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  ]));
 }

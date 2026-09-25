@@ -377,7 +377,7 @@ function ReportCommentModal({ reason, details, busy, error, onReasonChange, onDe
                 onClick={() => setReasonOpen((current) => !current)}
               >
                 <span className="custom-select-label">{reason}</span>
-                <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+                <span className="custom-select-chevron" aria-hidden="true" />
               </button>
               {reasonOpen && (
                 <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label="Motivo de denuncia">

@@ -1,6 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { LatexBlock } from "./latexReader";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { ToolExampleButton } from "./ToolExampleButton";
+
+const RATIONALIZATION_EXAMPLES = [
+  { label: "una raíz en el denominador", mode: "single-radical", expression: "5/sqrt(3)" },
+  { label: "denominador con conjugado", mode: "conjugate", expression: "2/(3+sqrt(5))" },
+  { label: "dos radicales", mode: "two-radicals", expression: "1/(sqrt(5)-sqrt(2))" },
+];
 
 export function RationalizationToolModal({ onClose }) {
   const [mode, setMode] = useState("auto");
@@ -69,6 +76,13 @@ export function RationalizationToolModal({ onClose }) {
               ))}
             </div>
             <p className="truth-tool-hint">Escribe raices como sqrt(2). Ejemplos: 3/sqrt(2), 1/(2+sqrt(3)), (sqrt(3)-sqrt(2))/(sqrt(3)+sqrt(2)).</p>
+            <ToolExampleButton
+              examples={RATIONALIZATION_EXAMPLES}
+              onLoad={(example) => {
+                setMode(example.mode);
+                setExpression(example.expression);
+              }}
+            />
             <button className="secondary-action truth-clear-button" type="button" onClick={() => setExpression("")} disabled={!expression}>
               Borrar fraccion
             </button>

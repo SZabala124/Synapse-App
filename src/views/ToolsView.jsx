@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { matchesFuzzySearch } from "../utils/fuzzySearch";
 import { AlgebraToolModal } from "./tools/AlgebraOperationsTool";
 import { FactorizationToolModal } from "./tools/FactorizationTool";
 import { PiecewiseGraphToolModal } from "./tools/PiecewiseGraphTool";
@@ -106,17 +107,21 @@ export function ToolsView({
   const consumeToolAccess = useMutation(api.users.consumeToolAccess);
   const allSubjects = useMemo(() => mergeSubjects(subjects, fallbackSubjects), [subjects]);
   const allowedSubjectIds = useMemo(() => new Set(subjects.map((item) => item.id)), [subjects]);
+
+  useEffect(() => {
+    if (!activeTool && !accessPrompt) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [accessPrompt, activeTool]);
+
   const visibleTools = useMemo(() => {
-    const query = normalizeSearchText(search);
     const filtered = toolCatalog.filter((tool) => {
       if (allowedSubjectIds.size > 0 && !allowedSubjectIds.has(tool.subject)) return false;
       const subjectLabel = subjectName(allSubjects, tool.subject);
-      const matchesSearch = !query || [tool.title, tool.type, tool.topic, tool.description, subjectLabel, tool.difficulty]
-        .join(" ")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .includes(query);
+      const matchesSearch = matchesFuzzySearch(search, [tool.title, tool.type, tool.topic, tool.description, subjectLabel, tool.difficulty]);
       const matchesSubject = subject === "Todas" || tool.subject === subject;
       const matchesType = toolType === "Todos" || tool.type === toolType;
       return matchesSearch && matchesSubject && matchesType;
@@ -180,13 +185,16 @@ export function ToolsView({
 
   return (
     <section className="workspace">
-      <div className="workspace-header">
+      <div className="workspace-header workspace-header-top-aligned">
         <div className="materials-heading-copy">
           <p className="eyebrow">Calculadoras academicas</p>
           <h1>Herramientas</h1>
           <p>Calculadoras y asistentes de resolución para problemas de distintas materias, sin depender de la biblioteca.</p>
+          <div className="cache-note material-status-note">
+            {toolsLocked ? "Herramientas disponibles desde el plan Pro" : `${visibleTools.length} herramientas encontradas`}
+          </div>
         </div>
-        <div className="library-search">
+        <div className="library-search tools-library-search">
           <label className="library-search-field library-search-field-wide library-search-field-search">
             <span>Busqueda</span>
             <input value={search} onChange={(event) => onSearchChange(event.target.value)} type="search" placeholder="Buscar herramienta..." aria-label="Buscar herramienta" />
@@ -203,12 +211,6 @@ export function ToolsView({
             <span>Orden</span>
             <CustomSelect ariaLabel="Ordenar herramientas" value={sort} options={["Recientes", "A-Z"].map((item) => ({ value: item, label: item }))} onChange={onSortChange} />
           </div>
-        </div>
-      </div>
-
-      <div className="material-control-row">
-        <div className="cache-note material-status-note">
-          {toolsLocked ? "Herramientas disponibles desde el plan Pro" : `${visibleTools.length} herramientas encontradas`}
         </div>
       </div>
 
@@ -428,7 +430,7 @@ function CustomSelect({ ariaLabel, value, options, onChange }) {
       >
         <span className="custom-select-label">{selected?.label}</span>
         {selected?.count !== undefined && <span className="custom-select-count">{selected.count}</span>}
-        <span className="custom-select-chevron" aria-hidden="true">⌄</span>
+        <span className="custom-select-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="custom-select-menu" role="listbox" tabIndex={-1} aria-label={ariaLabel}>
@@ -478,12 +480,4 @@ function prettifySpanishSubject(value) {
     ["matematica basica", "Matemática Básica"],
   ]);
   return knownSubjects.get(cleanValue.toLowerCase()) ?? cleanValue;
-}
-
-function normalizeSearchText(value) {
-  return String(value ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
 }

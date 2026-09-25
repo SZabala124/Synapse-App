@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { COURSE_CODE_ALIASES, flowPrograms } from "./flowData";
+import { assertAdmin } from "./users";
 
 export const listCareers = query({
   args: {},
@@ -62,6 +63,7 @@ export const getFlow = query({
   handler: async (ctx, args) => {
     const program = flowPrograms.find((item) => item.id === args.career) ?? flowPrograms[0];
     const statuses = {};
+    const periods = withCourseIds(program);
     let rows = [];
 
     if (args.userEmail) {
@@ -70,7 +72,13 @@ export const getFlow = query({
         .withIndex("by_user_course", (q) => q.eq("userEmail", normalizeEmail(args.userEmail)))
         .take(1000);
       rows.forEach((row) => {
-        const code = canonicalCourseCode(row.courseCode);
+        let code = canonicalCourseCode(row.courseCode);
+        if (code === "FGE") {
+          if (row.career !== program.id) return;
+          const firstFge = periods.flat().find((course) => course.code === "FGE");
+          if (!firstFge) return;
+          code = fgeInstanceKey(firstFge);
+        }
         const current = statuses[code];
         if (!current || row.updatedAt > current.updatedAt) {
           statuses[code] = { status: row.status, updatedAt: row.updatedAt };
@@ -79,12 +87,66 @@ export const getFlow = query({
     }
 
     const publicStatuses = Object.fromEntries(Object.entries(statuses).map(([code, value]) => [code, value.status]));
+    const ratingRows = await ctx.db
+      .query("flowDifficultyRatings")
+      .withIndex("by_course_code")
+      .take(1000);
+    const knownCourseCodes = new Set(program.periods.flat().map((course) => course.code));
+    const latestRatings = {};
+    ratingRows.forEach((row) => {
+      const current = latestRatings[row.courseCode];
+      if (!current || row.updatedAt > current.updatedAt) latestRatings[row.courseCode] = row;
+    });
+    const difficultyRatings = Object.fromEntries(
+      Array.from(knownCourseCodes)
+        .filter((courseCode) => latestRatings[courseCode])
+        .map((courseCode) => [courseCode, latestRatings[courseCode].stars]),
+    );
     return {
       ...program,
-      periods: withCourseIds(program),
+      periods,
       statuses: publicStatuses,
+      difficultyRatings,
       debug: buildFlowDebug("getFlow", rows, publicStatuses),
     };
+  },
+});
+
+export const setDifficultyRating = mutation({
+  args: {
+    adminEmail: v.string(),
+    career: v.string(),
+    courseCode: v.string(),
+    stars: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await assertAdmin(ctx, args.adminEmail);
+    if (!Number.isInteger(args.stars) || args.stars < 1 || args.stars > 6) {
+      throw new Error("La dificultad debe estar entre 1 y 6 estrellas.");
+    }
+
+    const program = flowPrograms.find((item) => item.id === args.career);
+    const courseCode = canonicalCourseCode(args.courseCode);
+    if (!program || !program.periods.flat().some((course) => course.code === courseCode)) {
+      throw new Error("No se encontró esa materia en el flujograma.");
+    }
+
+    const existing = await ctx.db
+      .query("flowDifficultyRatings")
+      .withIndex("by_career_and_course", (q) => q.eq("career", program.id).eq("courseCode", courseCode))
+      .first();
+    const rating = {
+      career: program.id,
+      courseCode,
+      stars: args.stars,
+      updatedBy: args.adminEmail.trim().toLowerCase(),
+      updatedAt: Date.now(),
+    };
+
+    if (existing) await ctx.db.patch(existing._id, rating);
+    else await ctx.db.insert("flowDifficultyRatings", rating);
+
+    return { career: program.id, courseCode, stars: args.stars };
   },
 });
 
@@ -117,17 +179,44 @@ export const getSharedStatuses = query({
   },
 });
 
-export const setStatus = mutation({
-  args: {
-    userEmail: v.string(),
-    career: v.string(),
-    courseCode: v.string(),
-    status: v.string(),
-  },
-  handler: async (ctx, args) => {
+async function persistFlowStatus(ctx, args) {
     const now = Date.now();
     const userEmail = normalizeEmail(args.userEmail);
     const requestedCourseCode = canonicalCourseCode(args.courseCode);
+    if (requestedCourseCode.startsWith("FGE::")) {
+      const program = flowPrograms.find((item) => item.id === args.career);
+      const isValidOccurrence = program
+        && withCourseIds(program).flat().some((course) => course.code === "FGE" && fgeInstanceKey(course) === requestedCourseCode);
+      if (!isValidOccurrence) throw new Error("No se encontró esa instancia de FGE.");
+
+      const matchingRows = await ctx.db
+        .query("flowStatuses")
+        .withIndex("by_user_course", (q) => q.eq("userEmail", userEmail).eq("courseCode", requestedCourseCode))
+        .take(10);
+      const existingRow = matchingRows.find((row) => row.career === args.career);
+      if (existingRow) {
+        await ctx.db.patch(existingRow._id, { status: args.status, updatedAt: now });
+      } else {
+        await ctx.db.insert("flowStatuses", {
+          userEmail,
+          career: args.career,
+          courseCode: requestedCourseCode,
+          status: args.status,
+          updatedAt: now,
+        });
+      }
+      return {
+        changed: true,
+        courseCode: requestedCourseCode,
+        rowsMatched: existingRow ? 1 : 0,
+        rowsUpdated: existingRow ? 1 : 0,
+        rowsInserted: existingRow ? 0 : 1,
+        careersSynced: [args.career],
+        status: args.status,
+        payloadBytes: estimateJsonBytes({ career: args.career, courseCode: requestedCourseCode, status: args.status }),
+        payloadKb: toKb(estimateJsonBytes({ career: args.career, courseCode: requestedCourseCode, status: args.status })),
+      };
+    }
     const user = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", userEmail))
@@ -179,6 +268,80 @@ export const setStatus = mutation({
       payloadBytes: estimateJsonBytes({ existingRows, insertedIds, careersToSync, status: args.status }),
       payloadKb: toKb(estimateJsonBytes({ existingRows, insertedIds, careersToSync, status: args.status })),
     };
+}
+
+export const setStatus = mutation({
+  args: {
+    userEmail: v.string(),
+    career: v.string(),
+    courseCode: v.string(),
+    status: v.string(),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => persistFlowStatus(ctx, args),
+});
+
+export const setPeriodStatuses = mutation({
+  args: {
+    userEmail: v.string(),
+    career: v.string(),
+    changes: v.array(v.object({ courseCode: v.string(), status: v.string() })),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    if (!flowPrograms.some((program) => program.id === args.career)) throw new Error("No se encontró esa carrera.");
+    const requestedChanges = args.changes.map(({ courseCode, status }) => ({
+      courseCode: canonicalCourseCode(courseCode),
+      status,
+    }));
+    if (requestedChanges.length === 0 || requestedChanges.length > 100) throw new Error("La cantidad de cambios del periodo no es válida.");
+    const uniqueChanges = new Map();
+    requestedChanges.forEach((change) => uniqueChanges.set(change.courseCode, change));
+    const programCourses = withCourseIds(flowPrograms.find((program) => program.id === args.career)).flat();
+    for (const change of uniqueChanges.values()) {
+      const isValidCourse = change.courseCode.startsWith("FGE::")
+        ? programCourses.some((course) => course.code === "FGE" && fgeInstanceKey(course) === change.courseCode)
+        : programCourses.some((course) => course.code === change.courseCode);
+      if (!isValidCourse) throw new Error(`La materia ${change.courseCode} no pertenece a esta carrera.`);
+    }
+    const userEmail = normalizeEmail(args.userEmail);
+    const user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", userEmail)).first();
+    const existingRows = await ctx.db
+      .query("flowStatuses")
+      .withIndex("by_user_course", (q) => q.eq("userEmail", userEmail))
+      .take(1000);
+    const now = Date.now();
+    const changed = [];
+    for (const change of uniqueChanges.values()) {
+      if (change.courseCode.startsWith("FGE::")) {
+        const row = existingRows.find((item) => item.career === args.career && canonicalCourseCode(item.courseCode) === change.courseCode);
+        if (row) await ctx.db.patch(row._id, { status: change.status, updatedAt: now });
+        else await ctx.db.insert("flowStatuses", { userEmail, career: args.career, courseCode: change.courseCode, status: change.status, updatedAt: now });
+        changed.push(change.courseCode);
+        continue;
+      }
+      const matchingRows = uniqueRows(existingRows.filter((row) => canonicalCourseCode(row.courseCode) === change.courseCode));
+      await Promise.all(matchingRows.map((row) => ctx.db.patch(row._id, { courseCode: change.courseCode, status: change.status, updatedAt: now })));
+      const userCareerIds = user?.userType === "admin"
+        ? flowPrograms.map((program) => program.id)
+        : user?.careers?.length ? user.careers : [args.career];
+      const careersToSync = userCareerIds.filter((careerId) => programHasCourse(careerId, change.courseCode));
+      const existingCareerIds = new Set(matchingRows.map((row) => row.career));
+      for (const careerId of careersToSync.length ? careersToSync : [args.career]) {
+        if (!existingCareerIds.has(careerId)) {
+          await ctx.db.insert("flowStatuses", { userEmail, career: careerId, courseCode: change.courseCode, status: change.status, updatedAt: now });
+          existingCareerIds.add(careerId);
+        }
+      }
+      changed.push(change.courseCode);
+    }
+    const payloadBytes = estimateJsonBytes({ changed, career: args.career });
+    return {
+      changedCount: changed.length,
+      changed,
+      payloadBytes,
+      payloadKb: toKb(payloadBytes),
+    };
   },
 });
 
@@ -194,6 +357,7 @@ function withCourseIds(program) {
 
 function canonicalCourseCode(value) {
   const raw = String(value ?? "").trim();
+  if (raw.startsWith("FGE::")) return raw;
   const legacyCode = Object.keys(COURSE_CODE_ALIASES)
     .find((code) => raw === code || raw.endsWith(`-${code}`));
   const normalizedRaw = legacyCode
@@ -203,6 +367,10 @@ function canonicalCourseCode(value) {
     .flatMap((program) => program.periods.flat())
     .find((course) => normalizedRaw === course.code || normalizedRaw.endsWith(`-${course.code}`));
   return match?.code ?? normalizedRaw;
+}
+
+function fgeInstanceKey(course) {
+  return `FGE::${course.id}`;
 }
 
 function normalizeEmail(email) {
