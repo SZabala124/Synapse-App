@@ -8864,6 +8864,22 @@ html[data-theme="dark"] .subject-selection-reset-note span {
   background: var(--surface-warm);
 }
 
+.course-material-card.is-clickable {
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.course-material-card.is-clickable:hover {
+  border-color: color-mix(in srgb, var(--wine) 55%, var(--line));
+  background: color-mix(in srgb, var(--wine) 6%, var(--surface-warm));
+}
+
+.course-material-card.is-clickable:focus-visible {
+  border-color: var(--wine);
+  outline: 2px solid color-mix(in srgb, var(--wine) 55%, transparent);
+  outline-offset: 2px;
+}
+
 .course-material-actions {
   display: flex;
   justify-content: flex-end;

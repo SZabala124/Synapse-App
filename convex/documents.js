@@ -323,24 +323,25 @@ function withRatingStats(doc, stats, userRating) {
 
 function orderedDocumentsQuery(ctx, sort, { format, level } = {}) {
   const isMostViewed = isMostViewedSort(sort);
+  const order = isOldestSort(sort) ? "asc" : "desc";
   if (format && level) {
     return isMostViewed
       ? ctx.db.query("documents").withIndex("by_format_level_view_count", (q) => q.eq("format", format).eq("level", level)).order("desc")
-      : ctx.db.query("documents").withIndex("by_format_level_created", (q) => q.eq("format", format).eq("level", level)).order("desc");
+      : ctx.db.query("documents").withIndex("by_format_level_created", (q) => q.eq("format", format).eq("level", level)).order(order);
   }
   if (format) {
     return isMostViewed
       ? ctx.db.query("documents").withIndex("by_format_view_count", (q) => q.eq("format", format)).order("desc")
-      : ctx.db.query("documents").withIndex("by_format_created", (q) => q.eq("format", format)).order("desc");
+      : ctx.db.query("documents").withIndex("by_format_created", (q) => q.eq("format", format)).order(order);
   }
   if (level) {
     return isMostViewed
       ? ctx.db.query("documents").withIndex("by_level_view_count", (q) => q.eq("level", level)).order("desc")
-      : ctx.db.query("documents").withIndex("by_level_created", (q) => q.eq("level", level)).order("desc");
+      : ctx.db.query("documents").withIndex("by_level_created", (q) => q.eq("level", level)).order(order);
   }
   return isMostViewed
     ? ctx.db.query("documents").withIndex("by_view_count").order("desc")
-    : ctx.db.query("documents").withIndex("by_created").order("desc");
+    : ctx.db.query("documents").withIndex("by_created").order(order);
 }
 
 function isMostViewedSort(sort) {
@@ -350,8 +351,16 @@ function isMostViewedSort(sort) {
     .toLowerCase() === "mas vistos";
 }
 
+function isOldestSort(sort) {
+  return String(sort ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .startsWith("mas antiguo");
+}
+
 async function materialCandidatesQuery(ctx, { sort, format, level, search, rawSearch }) {
-  if (!search) {
+  if (!search || isOldestSort(sort)) {
     return orderedDocumentsQuery(ctx, sort, { format, level });
   }
 

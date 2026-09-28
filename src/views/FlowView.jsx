@@ -826,7 +826,19 @@ function CourseModal({
               {courseMaterials.length > 0 ? (
                 <div className="course-materials-list">
                   {courseMaterials.map((material) => (
-                    <article className="course-material-card" key={material.id}>
+                    <article
+                      className="course-material-card is-clickable"
+                      key={material.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Abrir ${material.title} en Materiales`}
+                      onClick={() => openMaterialInLibrary(material)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        openMaterialInLibrary(material);
+                      }}
+                    >
                       <div className="course-material-card-tags">
                         <span>{material.format}</span>
                         <span className="course-material-level">{material.level}</span>
@@ -836,9 +848,7 @@ function CourseModal({
                         {material.viewCount ?? 0} vistas · <RatingSummary average={material.ratingAverage ?? 0} />
                       </small>
                       <div className="course-material-actions">
-                        <button className="small-action" type="button" onClick={() => openMaterialInLibrary(material)}>
-                          Materiales
-                        </button>
+                        <span className="small-action" aria-hidden="true">Materiales</span>
                       </div>
                     </article>
                   ))}

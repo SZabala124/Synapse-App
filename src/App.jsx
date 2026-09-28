@@ -1174,6 +1174,9 @@ function findMaterialRow(materialId, localRows = [], remoteRows = []) {
 
 function sortMaterialRows(rows, sort = "Recientes") {
   const copy = [...rows];
+  if (normalizeMaterialSort(sort).startsWith("mas antiguo")) {
+    return copy.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
+  }
   if (normalizeMaterialSort(sort) === "mas vistos") {
     return copy.sort((left, right) =>
       (right.viewCount ?? 0) - (left.viewCount ?? 0) ||

@@ -106,7 +106,7 @@ export function MaterialsView({
     { value: "Todas", label: "Todas las materias", count: visibleSubjectTotal },
     ...subjects.map((item) => ({ value: item.id, label: subjectName(subjects, item.id), count: subjectCounts.get(item.id) ?? 0 })),
   ];
-  const sortOptions = ["Recientes", "Más vistos"];
+  const sortOptions = ["Recientes", "Más antiguos", "Más vistos"];
   const hasActiveFilters = Boolean(searchDraft.trim())
     || format !== "Todos"
     || level !== "Todos"
