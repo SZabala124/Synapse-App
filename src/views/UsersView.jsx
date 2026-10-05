@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { matchesFuzzySearch } from "../utils/fuzzySearch";
 
@@ -11,6 +11,11 @@ const CAREER_LABELS = {
   electrica: "Eléctrica",
   produccion: "Producción",
   quimica: "Química",
+  psicologia: "Psicología",
+  idiomas: "Idiomas Modernos",
+  "estudios-internacionales": "Estudios Internacionales",
+  "economia-empresarial": "Economía Empresarial",
+  "contaduria-publica": "Contaduría Pública",
 };
 
 export function UsersView({ adminEmail }) {
@@ -18,6 +23,10 @@ export function UsersView({ adminEmail }) {
   const setUserBlocked = useMutation(api.users.setUserBlocked);
   const term = useQuery(api.academicTerms.status, { adminEmail });
   const resetTerm = useMutation(api.academicTerms.reset);
+  const updateTermName = useMutation(api.academicTerms.updateDisplayName);
+  const [termName, setTermName] = useState("");
+  const [termNameBusy, setTermNameBusy] = useState(false);
+  const [termNameMessage, setTermNameMessage] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState("");
@@ -25,6 +34,10 @@ export function UsersView({ adminEmail }) {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const visibleUsers = filterUsers(users, search);
+
+  useEffect(() => {
+    setTermName(term?.displayName ?? "");
+  }, [term?.displayName]);
 
   async function confirmBlockChange() {
     if (!confirming) return;
@@ -63,6 +76,27 @@ export function UsersView({ adminEmail }) {
           ? `${term.processed} cuentas reiniciadas`
           : term ? `Próximo reinicio: ${formatDate(term.resetAt)}` : "El reinicio automático se programa al iniciar el trimestre."}</span>
       </div>
+
+      <form className="users-search-row quarter-term-name-control" onSubmit={async (event) => {
+        event.preventDefault();
+        setTermNameBusy(true);
+        setTermNameMessage("");
+        try {
+          await updateTermName({ adminEmail, displayName: termName });
+          setTermNameMessage(termName.trim() ? "Nombre actualizado para todos." : "Se restauró el nombre automático.");
+        } catch (error) {
+          setTermNameMessage(error.message ?? "No se pudo actualizar el nombre.");
+        } finally {
+          setTermNameBusy(false);
+        }
+      }}>
+        <label className="users-search-field">
+          <span>Nombre visible del trimestre</span>
+          <input value={termName} maxLength={60} disabled={!term || termNameBusy} placeholder={term ? new Date(term.startedAt).toLocaleDateString("es", { month: "long", year: "numeric" }) : "Trimestre no configurado"} onChange={(event) => setTermName(event.target.value)} />
+        </label>
+        <button className="primary-action" type="submit" disabled={!term || termNameBusy || termName === (term?.displayName ?? "")}>{termNameBusy ? "Guardando..." : "Guardar nombre"}</button>
+        {termNameMessage && <span className="quarter-term-name-message" role="status">{termNameMessage}</span>}
+      </form>
 
       <div className="users-search-row">
         <label className="users-search-field">
@@ -115,19 +149,26 @@ export function UsersView({ adminEmail }) {
                 <div><dt>Teléfono</dt><dd>{user.phone || "Sin registrar"}</dd></div>
                 <div><dt>Carreras</dt><dd>{formatCareers(user.careers)}</dd></div>
                 <div><dt>Materias seleccionadas</dt><dd>{formatSubjects(user.selectedSubjectCodes)}</dd></div>
+                <div><dt>Vencimiento del plan</dt><dd>{formatDate(user.planExpiresAt)}</dd></div>
                 <div><dt>Creado</dt><dd>{formatDate(user.createdAt)}</dd></div>
                 <div><dt>Actualizado</dt><dd>{formatDate(user.updatedAt)}</dd></div>
               </dl>
 
               <div className="user-admin-actions">
-                <button
-                  className={isBlocked ? "secondary-action" : "primary-action danger-primary"}
-                  type="button"
-                  disabled={isAdmin || user.email === adminEmail}
-                  onClick={() => setConfirming({ user, action: isBlocked ? "unblock" : "block" })}
-                >
-                  {isBlocked ? "Desbloquear usuario" : "Bloquear usuario"}
-                </button>
+                {user.userType !== "admin" && user.storedPlan !== "free" && (
+                  <PlanExpirationEditor adminEmail={adminEmail} user={user} />
+                )}
+                <div className="user-admin-primary-actions">
+                  <AdminPasswordReset user={user} />
+                  <button
+                    className={isBlocked ? "secondary-action" : "primary-action danger-primary"}
+                    type="button"
+                    disabled={isAdmin || user.email === adminEmail}
+                    onClick={() => setConfirming({ user, action: isBlocked ? "unblock" : "block" })}
+                  >
+                    {isBlocked ? "Desbloquear usuario" : "Bloquear usuario"}
+                  </button>
+                </div>
               </div>
             </article>
           );
@@ -167,6 +208,129 @@ export function UsersView({ adminEmail }) {
         document.body
       )}
     </section>
+  );
+}
+
+function AdminPasswordReset({ user }) {
+  const resetPassword = useAction(api.adminPasswordReset.resetPassword);
+  const [open, setOpen] = useState(false);
+  const [adminKey, setAdminKey] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    if (password !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await resetPassword({ adminKey, targetEmail: user.email, newPassword: password });
+      setMessage("Contraseña restablecida. Entrégale la nueva contraseña al usuario por un canal privado.");
+      setAdminKey("");
+      setPassword("");
+      setConfirmPassword("");
+      setOpen(false);
+    } catch (resetError) {
+      setError(resetError?.message ?? "No se pudo restablecer la contraseña.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="admin-password-reset-control">
+      <button className="secondary-action" type="button" onClick={() => { setError(""); setOpen(true); }}>
+        Restablecer contraseña
+      </button>
+      {message && <span role="status">{message}</span>}
+      {open && createPortal(
+        <div className="course-detail-overlay is-visible" role="dialog" aria-modal="true" aria-labelledby="admin-reset-password-title">
+          <section className="course-detail-modal user-block-modal">
+            <header><div><p className="eyebrow">Acción administrativa</p><h2 id="admin-reset-password-title">Restablecer contraseña</h2><span>{user.email}</span></div></header>
+            <form className="course-detail-body auth-form" onSubmit={submit}>
+              <p>La contraseña nueva sustituirá la anterior. Entrégala al usuario por un canal privado y evita reutilizarla en otras cuentas.</p>
+              <label>Clave especial de administrador
+                <input type="password" autoComplete="off" value={adminKey} onChange={(event) => setAdminKey(event.target.value)} required />
+              </label>
+              <label>Nueva contraseña
+                <input type="password" autoComplete="new-password" minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required />
+              </label>
+              <label>Confirmar nueva contraseña
+                <input type="password" autoComplete="new-password" minLength={8} maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
+              </label>
+              {error && <p className="auth-error" role="alert">{error}</p>}
+              <div className="profile-actions">
+                <button className="quiet-button" type="button" disabled={busy} onClick={() => { setOpen(false); setAdminKey(""); setPassword(""); setConfirmPassword(""); setError(""); }}>Cancelar</button>
+                <button className="primary-action danger-primary" type="submit" disabled={busy || password.length < 8 || !adminKey}>{busy ? "Restableciendo..." : "Confirmar restablecimiento"}</button>
+              </div>
+            </form>
+          </section>
+        </div>, document.body,
+      )}
+    </div>
+  );
+}
+
+function PlanExpirationEditor({ adminEmail, user }) {
+  const setUserPlanExpiration = useMutation(api.users.setUserPlanExpiration);
+  const [value, setValue] = useState(() => toDateTimeLocal(user.planExpiresAt));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setValue(toDateTimeLocal(user.planExpiresAt));
+  }, [user.planExpiresAt]);
+
+  async function saveExpiration() {
+    setMessage("");
+    setError("");
+    if (!value) {
+      setError("Selecciona una fecha y hora.");
+      return;
+    }
+    const expiresAt = new Date(value).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+      setError("La fecha y hora no son válidas.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await setUserPlanExpiration({ adminEmail, targetEmail: user.email, expiresAt });
+      setMessage("Vencimiento actualizado.");
+    } catch (saveError) {
+      setError(saveError?.message ?? "No se pudo actualizar el vencimiento.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="user-plan-expiration-control">
+      <label>
+        Cambiar vencimiento
+        <input
+          type="datetime-local"
+          value={value}
+          onChange={(event) => { setValue(event.target.value); setMessage(""); setError(""); }}
+          disabled={busy}
+        />
+      </label>
+      <button className="secondary-action" type="button" onClick={saveExpiration} disabled={busy || !value}>
+        {busy ? "Guardando..." : "Guardar fecha"}
+      </button>
+      <small>Fecha local. Pon una fecha pasada para probar el vencimiento.</small>
+      {message && <span className="user-plan-expiration-message" role="status">{message}</span>}
+      {error && <span className="auth-error user-plan-expiration-error" role="alert">{error}</span>}
+    </div>
   );
 }
 
@@ -238,6 +402,12 @@ function formatDate(timestamp) {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function toDateTimeLocal(timestamp) {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
+  const localDate = new Date(timestamp - new Date(timestamp).getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
 }
 
 function filterUsers(users, search) {

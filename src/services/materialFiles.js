@@ -9,17 +9,19 @@ const PDF_BLOB_CACHE_LIMIT = 3;
 const IMAGE_BLOB_CACHE_LIMIT = 40;
 const pdfBlobCache = new Map();
 const imageBlobCache = new Map();
+let serverActions = null;
 
-export async function uploadMaterialPdf(file, ownerEmail) {
+export function configureMaterialFileActions(actions) {
+  serverActions = actions;
+}
+
+export async function uploadMaterialPdf(file) {
   if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no está configurado.");
   if (file.type !== "application/pdf") throw new Error("Por ahora solo se aceptan archivos PDF.");
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
-  const path = `${ownerEmail}/pdf/${Date.now()}-${safeName}`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { path, token } = await requireServerActions().createUpload({ fileName: file.name, mimeType: file.type, size: file.size, kind: "pdf" });
+  const { error } = await supabase.storage.from(BUCKET).uploadToSignedUrl(path, token, file, {
     cacheControl: "3600",
     contentType: "application/pdf",
-    upsert: false,
   });
   if (error) throw normalizeStorageError(error);
   return {
@@ -31,17 +33,15 @@ export async function uploadMaterialPdf(file, ownerEmail) {
   };
 }
 
-export async function uploadMaterialImage(file, ownerEmail) {
+export async function uploadMaterialImage(file) {
   if (!file || file.size === 0) return null;
   if (!isSupabaseConfigured) throw new Error("El almacenamiento de imágenes no está configurado.");
   if (!file.type.startsWith("image/")) throw new Error("La portada debe ser una imagen.");
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
-  const path = `${ownerEmail}/images/${Date.now()}-${safeName}`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { path, token } = await requireServerActions().createUpload({ fileName: file.name, mimeType: file.type, size: file.size, kind: "images" });
+  const { error } = await supabase.storage.from(BUCKET).uploadToSignedUrl(path, token, file, {
     cacheControl: "86400",
     contentType: file.type,
-    upsert: false,
   });
   if (error) throw normalizeStorageError(error);
   return {
@@ -56,10 +56,9 @@ export async function getMaterialPdfUrl(storagePath) {
   if (cached) return cached;
   if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no está configurado.");
 
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, PDF_SIGNED_URL_TTL_SECONDS);
-  if (error) throw normalizeStorageError(error);
-  writeSignedUrlCache(storagePath, data.signedUrl, SIGNED_URL_CACHE_PREFIX, PDF_SIGNED_URL_TTL_SECONDS);
-  return data.signedUrl;
+  const signedUrl = await requireServerActions().createDownload({ storagePath, expiresIn: PDF_SIGNED_URL_TTL_SECONDS }).catch(normalizeMaterialDownloadError);
+  writeSignedUrlCache(storagePath, signedUrl, SIGNED_URL_CACHE_PREFIX, PDF_SIGNED_URL_TTL_SECONDS);
+  return signedUrl;
 }
 
 export async function getMaterialPdfObjectUrl(storagePath) {
@@ -111,8 +110,7 @@ export async function deleteMaterialFile(storagePath) {
   if (!storagePath) return;
   if (!isSupabaseConfigured) return;
 
-  const { error } = await supabase.storage.from(BUCKET).remove([storagePath]);
-  if (error) throw normalizeStorageError(error);
+  await requireServerActions().remove({ storagePath });
   sessionStorage.removeItem(`${SIGNED_URL_CACHE_PREFIX}:${storagePath}`);
   sessionStorage.removeItem(`${IMAGE_URL_CACHE_PREFIX}:${storagePath}`);
   pdfBlobCache.delete(storagePath);
@@ -137,9 +135,16 @@ function normalizeStorageError(error) {
 
 async function createMaterialPdfSignedUrl(storagePath) {
   if (!isSupabaseConfigured) throw new Error("El almacenamiento de archivos no está configurado.");
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, PDF_SIGNED_URL_TTL_SECONDS);
-  if (error) throw normalizeStorageError(error);
-  return data.signedUrl;
+  return await requireServerActions().createDownload({ storagePath, expiresIn: PDF_SIGNED_URL_TTL_SECONDS }).catch(normalizeMaterialDownloadError);
+}
+
+function normalizeMaterialDownloadError(error) {
+  if (/l[ií]mite mensual de materiales Pro/i.test(String(error?.message ?? ""))) {
+    const accessError = new Error("Tu plan Pro venció y ya alcanzaste el límite de materiales Pro del plan Gratis.");
+    accessError.code = "PRO_MATERIAL_LIMIT_REACHED";
+    throw accessError;
+  }
+  throw error instanceof Error ? error : new Error("No se pudo autorizar la descarga del material.");
 }
 
 async function createMaterialImageSignedUrl(storagePath) {
@@ -147,10 +152,14 @@ async function createMaterialImageSignedUrl(storagePath) {
   if (cached) return cached;
   if (!isSupabaseConfigured) throw new Error("El almacenamiento de imágenes no está configurado.");
 
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, IMAGE_SIGNED_URL_TTL_SECONDS);
-  if (error) throw normalizeStorageError(error);
-  writeSignedUrlCache(storagePath, data.signedUrl, IMAGE_URL_CACHE_PREFIX, IMAGE_SIGNED_URL_TTL_SECONDS);
-  return data.signedUrl;
+  const signedUrl = await requireServerActions().createDownload({ storagePath, expiresIn: IMAGE_SIGNED_URL_TTL_SECONDS });
+  writeSignedUrlCache(storagePath, signedUrl, IMAGE_URL_CACHE_PREFIX, IMAGE_SIGNED_URL_TTL_SECONDS);
+  return signedUrl;
+}
+
+function requireServerActions() {
+  if (!serverActions) throw new Error("La autorización segura de archivos todavía no está disponible.");
+  return serverActions;
 }
 
 function readSignedUrlCache(storagePath, prefix = SIGNED_URL_CACHE_PREFIX) {

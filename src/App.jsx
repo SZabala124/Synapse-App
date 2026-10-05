@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { FLOW_CATALOG_VERSION } from "../convex/flowData";
 import { activities, flowPeriods, subjects } from "./data/demoData";
 import { loadJson, saveJson } from "./utils/localStore";
-import { readConvexCache, writeConvexCache } from "./utils/convexCache";
+import { clearConvexCache, getConvexCacheMeta, readConvexCache, writeConvexCache } from "./utils/convexCache";
 import { useCachedConvexQuery } from "./hooks/useCachedConvexQuery";
 import { useMaterialCatalog } from "./hooks/useMaterialCatalog";
-import { deleteMaterialFile, uploadMaterialImage, uploadMaterialPdf } from "./services/materialFiles";
+import { configureMaterialFileActions, deleteMaterialFile, uploadMaterialImage, uploadMaterialPdf } from "./services/materialFiles";
+import { isSupabaseConfigured, supabase } from "./lib/supabaseClient";
 import { AppShell } from "./components/AppShell";
 import { AuthPanel } from "./components/AuthPanel";
 import { LegalLinks } from "./components/LegalDocuments";
@@ -20,6 +22,7 @@ import { ToolsView } from "./views/ToolsView";
 import { CommentsView } from "./views/CommentsView";
 import { PlansView } from "./views/PlansView";
 import { PaymentsView } from "./views/PaymentsView";
+import { QuarterView } from "./views/QuarterView";
 import { UsersView } from "./views/UsersView";
 import { matchesFuzzySearch } from "./utils/fuzzySearch";
 import logoUrl from "../Synapse.svg";
@@ -41,8 +44,12 @@ const defaultState = {
 export default function App({ convexEnabled = false }) {
   const [authRequested, setAuthRequested] = useState(false);
   const [authMode, setAuthMode] = useState("signIn");
-  const [currentUser, setCurrentUser] = useState(() => loadJson(SESSION_KEY, null));
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
   const [loadingUser, setLoadingUser] = useState(null);
+  const signupInProgressRef = useRef(false);
   const [theme, setTheme] = useState(() => {
     const savedTheme = window.localStorage.getItem(THEME_KEY);
     if (savedTheme === "light" || savedTheme === "dark") return savedTheme;
@@ -54,13 +61,103 @@ export default function App({ convexEnabled = false }) {
     window.localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
+  useEffect(() => {
+    window.localStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(LOCAL_USERS_KEY);
+    if (!isSupabaseConfigured || !supabase) return undefined;
+
+    let active = true;
+    const callbackHash = new URLSearchParams(window.location.hash.slice(1));
+    const callbackQuery = new URLSearchParams(window.location.search);
+    const callbackTokenHash = callbackHash.get("token_hash") || callbackQuery.get("token_hash");
+    const callbackType = callbackHash.get("type") || callbackQuery.get("type");
+    const pendingRecoveryToken = Boolean(callbackTokenHash && callbackType === "recovery");
+    const callbackError = callbackHash.get("error_description")
+      || callbackQuery.get("error_description")
+      || callbackHash.get("error")
+      || callbackQuery.get("error")
+      || callbackHash.get("error_code")
+      || callbackQuery.get("error_code");
+    const recoveryFromUrl = callbackHash.get("type") === "recovery"
+      || callbackQuery.get("type") === "recovery"
+      || Boolean(callbackTokenHash)
+      // PKCE callbacks use a one-time `code` query parameter instead of recovery tokens in the hash.
+      || callbackQuery.has("code")
+      // Supabase reports expired/invalid email links in the URL fragment or query string.
+      || Boolean(callbackError);
+    let handlingPasswordRecovery = recoveryFromUrl;
+    const openRecovery = (ready = true) => {
+      handlingPasswordRecovery = true;
+      setRecoveryMode(true);
+      setRecoveryError("");
+      setCurrentUser(null);
+      setAuthRequested(true);
+      setAuthMode("recoveryPassword");
+      if (ready) setAuthReady(true);
+    };
+    if (recoveryFromUrl) openRecovery(false);
+    const applySession = (session) => {
+      if (!active || signupInProgressRef.current) return;
+      const user = session?.user;
+      const email = user?.email?.toLowerCase();
+      const sessionCreatedAt = Date.parse(user?.created_at) || Date.now();
+      setCurrentUser((current) => {
+        if (!email) return null;
+        if (current?.email === email) {
+          return current.createdAt === sessionCreatedAt ? current : { ...current, createdAt: sessionCreatedAt };
+        }
+        return { email, createdAt: sessionCreatedAt };
+      });
+      setAuthReady(true);
+    };
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (recoveryFromUrl) {
+        openRecovery();
+        if (callbackError || error || (!data.session && !pendingRecoveryToken)) {
+          setRecoveryError(callbackError || "No se pudo validar el enlace. Solicita uno nuevo y ábrelo una sola vez desde el correo más reciente.");
+        }
+        // Keep a direct recovery token hash until the user explicitly submits the new password.
+        if (!pendingRecoveryToken) {
+          const cleanUrl = new URL(window.location.href);
+          ["code", "type", "token_hash", "error", "error_code", "error_description"].forEach((key) => cleanUrl.searchParams.delete(key));
+          cleanUrl.hash = "";
+          window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}`);
+        }
+        return;
+      }
+      applySession(data.session);
+    }).catch(() => {
+      if (!active) return;
+      if (recoveryFromUrl) {
+        openRecovery();
+        if (!pendingRecoveryToken) setRecoveryError(callbackError || "No se pudo validar el enlace. Solicita uno nuevo y ábrelo una sola vez desde el correo más reciente.");
+      } else {
+        setAuthReady(true);
+      }
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        handlingPasswordRecovery = true;
+        setRecoveryMode(true);
+        setCurrentUser(null);
+        if (recoveryFromUrl) openRecovery();
+        return;
+      }
+      if (!handlingPasswordRecovery) applySession(session);
+    });
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
   function openAuth(mode) {
     setAuthMode(mode);
     setAuthRequested(true);
   }
 
   function handleAuthSuccess(user) {
-    saveJson(SESSION_KEY, user);
     setAuthRequested(false);
     setLoadingUser(user);
     window.setTimeout(() => {
@@ -69,12 +166,16 @@ export default function App({ convexEnabled = false }) {
     }, 1400);
   }
 
-  function handleSignOut() {
+  async function handleSignOut() {
+    if (supabase) await supabase.auth.signOut({ scope: "local" });
     window.localStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(LOCAL_USERS_KEY);
     setCurrentUser(null);
     setLoadingUser(null);
     setAuthRequested(false);
   }
+
+  if (!authReady) return <AppLoader />;
 
   if (loadingUser) {
     return <AppLoader />;
@@ -96,7 +197,11 @@ export default function App({ convexEnabled = false }) {
   return (
     <>
       {authRequested ? (
-        <AuthPanel initialMode={authMode} onBack={() => setAuthRequested(false)} onAuthSuccess={handleAuthSuccess} convexEnabled={convexEnabled} />
+        <AuthPanel initialMode={authMode} initialError={recoveryError} onBack={recoveryMode ? undefined : () => setAuthRequested(false)} onSignupStarted={() => { signupInProgressRef.current = true; }} onSignupFailed={() => { signupInProgressRef.current = false; }} onAuthSuccess={(user) => {
+          signupInProgressRef.current = false;
+          setRecoveryMode(false);
+          handleAuthSuccess(user);
+        }} convexEnabled={convexEnabled} />
       ) : (
         <PublicLanding onAuthClick={openAuth} />
       )}
@@ -138,6 +243,9 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
   const [toolSubject, setToolSubject] = useState("Todas");
   const [toolSort, setToolSort] = useState("Recientes");
   const [toolLimit, setToolLimit] = useState(6);
+  const createMaterialUpload = useAction(api.storageActions.createUpload);
+  const createMaterialDownload = useAction(api.storageActions.createDownload);
+  const removeMaterialStorage = useAction(api.storageActions.remove);
   const subjectSelection = useQuery(api.users.getSubjectSelection, convexEnabled ? { email: currentUser.email } : "skip");
   const entitlements = useQuery(api.users.getEntitlements, convexEnabled ? { email: currentUser.email } : "skip");
   const pendingPayment = useQuery(api.payments.myPending, convexEnabled ? { userEmail: currentUser.email } : "skip");
@@ -160,6 +268,16 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
     (currentUserWithSubjectSelection.selectedSubjectCodes ?? []).length > 0,
   );
   const canLoadMaterialData = !convexEnabled || isAdminForMaterialAccess || hasPaidPlan || hasSavedSubjectSelection;
+
+  useEffect(() => {
+    if (!convexEnabled) return undefined;
+    configureMaterialFileActions({
+      createUpload: createMaterialUpload,
+      createDownload: createMaterialDownload,
+      remove: removeMaterialStorage,
+    });
+    return () => configureMaterialFileActions(null);
+  }, [convexEnabled, createMaterialDownload, createMaterialUpload, removeMaterialStorage]);
 
   useEffect(() => {
     const onHashChange = () => setRoute(window.location.hash.replace("#", "") || "landing");
@@ -197,7 +315,6 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
       subjectSelectionPeriodEnd: updatedProfile?.subjectSelectionPeriodEnd ?? updatedProfile?.periodEnd,
       subjectSelectionUpdatedAt: updatedProfile?.subjectSelectionUpdatedAt ?? updatedProfile?.updatedAt,
     };
-    saveJson(SESSION_KEY, nextUser);
     onUserUpdate(nextUser);
     setSubjectSelectionOpen(false);
     showToast("Materias del trimestre actualizadas.");
@@ -248,6 +365,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
   const allowedRoutes = [
     "landing",
     "career",
+    "quarter",
     "materials",
     "tools",
     "comments",
@@ -301,6 +419,7 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
             <FlowView flowPeriods={flowPeriods} flowStatuses={appState.flowStatuses} onStatusChange={updateFlowStatus} onPeriodStatusChange={updateFlowStatuses} />
           )
         )}
+        {currentRoute === "quarter" && <QuarterView currentUser={currentUserWithSubjectSelection} />}
         {currentRoute === "materials" && (
           convexEnabled ? (
             <ConvexMaterialsSection
@@ -405,8 +524,6 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
               profile={currentUser}
               onSave={async (profile) => {
                 const nextUser = { ...currentUser, ...profile };
-                persistLocalUserProfile(nextUser);
-                saveJson(SESSION_KEY, nextUser);
                 onUserUpdate(nextUser);
               }}
               onSignOut={onSignOut}
@@ -421,6 +538,10 @@ function AuthenticatedApp({ currentUser, convexEnabled, theme, onThemeChange, on
       {convexEnabled && subjectSelectionOpen && subjectSelection && (
         <SubjectSelectionModal
           selectionState={subjectSelection}
+          onGoToProfile={() => {
+            setSubjectSelectionOpen(false);
+            window.location.hash = "profile";
+          }}
           onCancel={() => {
             setSubjectSelectionOpen(false);
           }}
@@ -450,7 +571,7 @@ function BlockedAccountScreen({ onSignOut }) {
   );
 }
 
-function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
+function SubjectSelectionModal({ selectionState, onCancel, onGoToProfile, onSave }) {
   const [query, setQuery] = useState("");
   const [selectedCodes, setSelectedCodes] = useState(() => selectionState.selectedSubjectCodes ?? []);
   const [error, setError] = useState("");
@@ -544,6 +665,9 @@ function SubjectSelectionModal({ selectionState, onCancel, onSave }) {
               <div className="subject-selection-empty">
                 <strong>No hay carreras seleccionadas</strong>
                 <span>Actualiza tu perfil para elegir tu carrera y poder escoger materias.</span>
+                <button className="quiet-button" type="button" onClick={onGoToProfile} disabled={busy}>
+                  Completar perfil
+                </button>
               </div>
             ) : (
               <>
@@ -656,11 +780,14 @@ function SubjectSelectionEditConfirmModal({ editsRemaining, consumesEdit, busy, 
 
 function ConvexProfileSection({ currentUser, subjectSelection, pendingPayment, onOpenSubjectSelection, onUserUpdate, onSignOut }) {
   const profile = useQuery(api.users.getProfile, { email: currentUser.email });
-  const ensureProfile = useMutation(api.users.ensureProfile);
+  const updateProfile = useMutation(api.users.updateMyProfile);
 
   async function saveProfile(profilePatch) {
     const nextUser = { ...currentUser, ...profilePatch };
-    const savedProfile = await ensureProfile(toProfileArgs(nextUser));
+    const savedProfile = await updateProfile({
+      ...toProfileArgs(nextUser),
+      expectedUpdatedAt: profile?.updatedAt ?? 0,
+    });
     const resolvedUser = {
       ...nextUser,
       careerSelectionPeriodStart: savedProfile?.careerSelectionPeriodStart,
@@ -668,8 +795,6 @@ function ConvexProfileSection({ currentUser, subjectSelection, pendingPayment, o
       careerSelectionEditsRemaining: savedProfile?.careerSelectionEditsRemaining,
       careerSelectionUpdatedAt: savedProfile?.careerSelectionUpdatedAt,
     };
-    persistLocalUserProfile(resolvedUser);
-    saveJson(SESSION_KEY, resolvedUser);
     onUserUpdate(resolvedUser);
   }
 
@@ -679,7 +804,8 @@ function ConvexProfileSection({ currentUser, subjectSelection, pendingPayment, o
       profile={profile}
       subjectSelection={subjectSelection}
       pendingPayment={pendingPayment}
-      onOpenSubjectSelection={profile?.userType === "admin" ? undefined : onOpenSubjectSelection}
+      onOpenSubjectSelection={profile?.userType === "admin" ? () => { window.location.hash = "quarter"; } : onOpenSubjectSelection}
+      subjectSelectionActionLabel={profile?.userType === "admin" ? "Abrir trimestre" : undefined}
       onSave={saveProfile}
       onSignOut={onSignOut}
     />
@@ -687,8 +813,10 @@ function ConvexProfileSection({ currentUser, subjectSelection, pendingPayment, o
 }
 
 function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = true, canSeeAllCareerSubjects = false, search, format, level, subject, sort, savedOnly, onSearchChange, onFormatChange, onLevelChange, onSubjectChange, onSortChange, onSavedOnlyChange }) {
+  const convexClient = useConvex();
   const args = useMemo(() => ({ userEmail: currentUser.email, search, format, level, subject, sort, savedOnly }), [currentUser.email, search, format, level, subject, sort, savedOnly]);
   const filterKey = useMemo(() => JSON.stringify({ userEmail: currentUser.email, search, format, level, subject, sort, savedOnly, canLoadMaterials }), [currentUser.email, search, format, level, subject, sort, savedOnly, canLoadMaterials]);
+  const displayLimitKey = `synapse-material-display-limit-v1:${filterKey}`;
   const libraryState = useQuery(api.documents.libraryRevision, canLoadMaterials ? {} : "skip");
   const libraryRevision = libraryState?.revision ?? 0;
   const catalogScopeKey = useMemo(() => [
@@ -699,7 +827,16 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   const materialCatalog = useMaterialCatalog({ userEmail: currentUser.email, scopeKey: catalogScopeKey, serverRevision: libraryRevision, enabled: canLoadMaterials });
   const facetArgs = useMemo(() => ({ userEmail: currentUser.email, search, format, level, subject, savedOnly }), [currentUser.email, search, format, level, subject, savedOnly]);
   const access = useQuery(api.users.getAccess, { email: currentUser.email });
-  const courseCatalog = useQuery(api.flows.listCourses, { userEmail: currentUser.email });
+  const courseCatalogArgs = useMemo(() => ({ userEmail: currentUser.email }), [currentUser.email]);
+  const courseCatalogRevision = useQuery(api.flows.getCourseCatalogRevision, canLoadMaterials ? {} : "skip");
+  const { data: courseCatalog = [] } = useCachedConvexQuery(api.flows.listCourses, courseCatalogArgs, "flows.listCourses", {
+    initialValue: [],
+    enabled: canLoadMaterials,
+    waitForCacheVersion: true,
+    cacheVersion: courseCatalogRevision === undefined ? undefined : `${FLOW_CATALOG_VERSION}:all-careers-admin-v3:${catalogScopeKey}:${courseCatalogRevision}`,
+    ttlMs: 1000 * 60 * 60 * 24 * 30,
+    preferCacheMs: 1000 * 60 * 60 * 6,
+  });
   const createDocument = useMutation(api.documents.create);
   const updateDocument = useMutation(api.documents.update);
   const deleteDocument = useMutation(api.documents.remove);
@@ -708,17 +845,24 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
   const removeDocumentRating = useMutation(api.documents.removeRating);
   const incrementView = useMutation(api.documents.incrementView);
   const consumeMaterialAccess = useMutation(api.users.consumeMaterialAccess);
-  const ensureProfile = useMutation(api.users.ensureProfile);
   const rebuildLibraryStats = useMutation(api.documents.rebuildLibraryStats);
   const [localRows, setLocalRows] = useState([]);
   const [hiddenRowIds, setHiddenRowIds] = useState(() => new Set());
-  const [displayLimit, setDisplayLimit] = useState(6);
+  const [displayLimit, setDisplayLimit] = useState(() => Math.max(6, Number(loadJson(displayLimitKey, 6)) || 6));
 
   useEffect(() => {
     setLocalRows([]);
     setHiddenRowIds(new Set());
     setDisplayLimit(6);
   }, [filterKey]);
+
+  useEffect(() => {
+    try {
+      saveJson(displayLimitKey, displayLimit);
+    } catch (error) {
+      console.warn("No se pudo guardar el avance de la lista local de materiales.", error);
+    }
+  }, [displayLimit, displayLimitKey]);
 
   useEffect(() => {
     const remoteIds = new Set((materialCatalog.results ?? []).map((row) => row._id));
@@ -757,14 +901,6 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
       console.warn("No se pudieron inicializar los índices de biblioteca.", error);
     });
   }, [canAddMaterials, canLoadMaterials, currentUser.email, libraryState, rebuildLibraryStats]);
-
-  useEffect(() => {
-    if (!currentUser.email) return;
-    ensureProfile(toProfileArgs(currentUser))
-      .catch((error) => {
-        console.warn("No se pudo preparar el perfil del usuario.", error);
-      });
-  }, [currentUser, ensureProfile]);
 
   useEffect(() => {
     if (subject === "Todas" || materialSubjects.length === 0) return;
@@ -850,37 +986,42 @@ function ConvexMaterialsSection({ currentUser, entitlements, canLoadMaterials = 
 
   async function registerMaterialView(material) {
     updateMaterialEverywhere(material._id, (item) => ({ ...item, viewCount: (item.viewCount ?? 0) + 1 }));
-    incrementView({ id: material._id }).catch((error) => {
+    incrementView({ id: material._id }).then((result) => {
+      if (Number.isFinite(result?.viewCount)) {
+        updateMaterialEverywhere(material._id, (item) => ({ ...item, viewCount: result.viewCount }));
+      }
+    }).catch((error) => {
+      updateMaterialEverywhere(material._id, (item) => ({ ...item, viewCount: Math.max(0, (item.viewCount ?? 1) - 1) }));
       console.warn("No se pudo registrar la vista.", error);
     });
   }
 
-  function requestMaterialAccess(material) {
-    const plan = entitlements?.plan ?? currentUser.plan ?? "free";
+  async function requestMaterialAccess(material) {
     const isAdmin = entitlements?.isAdmin || currentUser.userType === "admin";
     const isProMaterial = String(material.level ?? "").toLowerCase() === "pro";
-    if (isAdmin || plan !== "free" || !isProMaterial) return { allowed: true };
+    if (isAdmin || !isProMaterial) return { allowed: true };
 
-    const usedIds = entitlements?.proMaterials?.usedIds ?? [];
-    const alreadyUsed = usedIds.includes(String(material._id));
-    if (alreadyUsed) return { allowed: true };
-
-    const remaining = entitlements?.proMaterials?.remaining ?? 0;
-    if (remaining <= 0) {
+    const liveAccess = await convexClient.query(api.users.previewMaterialAccess, {
+      email: currentUser.email,
+      documentId: material._id,
+    });
+    if (!liveAccess.allowed) {
       return {
         allowed: false,
-        title: "Limite mensual alcanzado",
-        message: "Ya usaste tus 3 materiales Pro de este mes. Mejora a Pro para abrir materiales Pro sin límites.",
+        title: "Límite de materiales Pro alcanzado",
+        message: liveAccess.reason ?? "Tu plan actual no permite abrir este material Pro.",
         actionLabel: "Ver planes",
         onAction: () => { window.location.hash = "plans"; },
       };
     }
 
+    if (!liveAccess.requiresConfirmation) return { allowed: true };
+
     return {
       allowed: false,
       needsConfirmation: true,
       title: "Usar material Pro",
-      message: `Este material gastará 1 de tus 3 materiales Pro del mes. Te quedarán ${Math.max(0, remaining - 1)}.`,
+      message: `${liveAccess.message} Te quedarán ${liveAccess.remainingAfterUse}.`,
       confirmLabel: "Abrir material",
       onConfirm: async () => {
         await consumeMaterialAccess({ email: currentUser.email, documentId: material._id });
@@ -1352,11 +1493,9 @@ function estimateJsonBytes(value) {
 }
 
 function formatApproxBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb >= 100 ? 0 : 1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb >= 10 ? 1 : 2)} MB`;
+  if (kb < 1024) return `${bytes} B (${kb.toFixed(2)} KB)`;
+  return `${bytes} B (${(kb / 1024).toFixed(3)} MB)`;
 }
 
 function ConvexUserProfileSync({ currentUser, onUserUpdate }) {
@@ -1364,11 +1503,11 @@ function ConvexUserProfileSync({ currentUser, onUserUpdate }) {
   const remoteProfile = useQuery(api.users.getProfile, currentUser?.email ? { email: currentUser.email } : "skip");
 
   useEffect(() => {
-    if (!currentUser?.email) return;
+    if (!currentUser?.email || !remoteProfile?.pendingCreation) return;
     ensureProfile(toProfileArgs(currentUser)).catch((error) => {
       console.warn("No se pudo preparar el perfil del usuario.", error);
     });
-  }, [currentUser, ensureProfile]);
+  }, [currentUser, ensureProfile, remoteProfile?.pendingCreation]);
 
   useEffect(() => {
     if (!remoteProfile) return;
@@ -1387,8 +1526,6 @@ function ConvexUserProfileSync({ currentUser, onUserUpdate }) {
     );
     if (!changed) return;
     const nextUser = { ...currentUser, ...remoteFields };
-    persistLocalUserProfile(nextUser);
-    saveJson(SESSION_KEY, nextUser);
     onUserUpdate(nextUser);
   }, [currentUser, onUserUpdate, remoteProfile]);
 
@@ -1538,6 +1675,34 @@ function filterSubjectsForUserCareers(subjectList, user, canSeeAll = false) {
   });
 }
 
+function getSharedStatusUpdates(sourceFlow, targetFlow, changes) {
+  const sourceCourses = sourceFlow?.periods?.flat() ?? [];
+  const targetCourses = targetFlow?.periods?.flat() ?? [];
+  const updates = {};
+
+  changes.forEach(({ courseCode, status }) => {
+    const source = sourceCourses.find((course) => `COURSE::${course.id}` === courseCode);
+    if (!source) return;
+    if (source.code === "FGE" && sourceFlow?.id !== targetFlow?.id) return;
+    targetCourses.forEach((course) => {
+      if (normalizeSharedCourseName(course.name) === normalizeSharedCourseName(source.name)) {
+        updates[`COURSE::${course.id}`] = status;
+      }
+    });
+  });
+
+  return updates;
+}
+
+function normalizeSharedCourseName(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function getSelectedSubjectCodeSet(user, canSeeAll = false) {
   if (canSeeAll || user?.userType === "admin" || canUserSeeAllCareerSubjects(user)) return null;
   const selectedSubjectCodes = Array.isArray(user?.selectedSubjectCodes)
@@ -1586,6 +1751,10 @@ function buildMaterialWatermark(user) {
 function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCareerSubjects = false, onOpenMaterialInLibrary }) {
   const [career, setCareer] = useState(() => currentUser.careers?.[0] ?? "sistemas");
   const args = useMemo(() => ({ career, userEmail: currentUser.email }), [career, currentUser.email]);
+  const flowRevision = useQuery(api.flows.getFlowRevision, args);
+  const flowCacheVersion = flowRevision
+    ? `${FLOW_CATALOG_VERSION}:shared-course-difficulty-v2:${flowRevision.statusVersion}:${flowRevision.ratingVersion}`
+    : undefined;
   const access = useQuery(api.users.getAccess, { email: currentUser.email });
   const libraryState = useQuery(api.documents.libraryRevision, canLoadMaterials ? {} : "skip");
   const libraryRevision = libraryState?.revision ?? 0;
@@ -1597,11 +1766,18 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
   const materialCatalog = useMaterialCatalog({ userEmail: currentUser.email, scopeKey: catalogScopeKey, serverRevision: libraryRevision, enabled: canLoadMaterials });
   const { data: flowData, isFromCache } = useCachedConvexQuery(api.flows.getFlow, args, "flows.getFlow", {
     initialValue: null,
-    ttlMs: 1000 * 60 * 30,
+    ttlMs: 1000 * 60 * 60 * 24 * 30,
+    preferCacheMs: 1000 * 60 * 60 * 24 * 30,
+    cacheVersion: flowCacheVersion,
+    waitForCacheVersion: true,
+    logPayloadLabel: "flujograma",
   });
   const { data: careersData } = useCachedConvexQuery(api.flows.listCareers, {}, "flows.listCareers", {
     initialValue: [],
-    ttlMs: 1000 * 60 * 60,
+    cacheVersion: FLOW_CATALOG_VERSION,
+    ttlMs: 1000 * 60 * 60 * 24 * 30,
+    preferCacheMs: 1000 * 60 * 60 * 24,
+    logPayloadLabel: "flujograma",
   });
   const setStatus = useMutation(api.flows.setStatus);
   const setPeriodStatuses = useMutation(api.flows.setPeriodStatuses);
@@ -1625,7 +1801,10 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
     : currentUser.careers?.length ? currentUser.careers : [career];
   const allowedCareers = careersData.length
     ? careersData.filter((item) => allowedCareerIds.includes(item.id))
-    : allowedCareerIds.map((id) => ({ id, name: id === "sistemas" ? "Ingeniería de Sistemas" : id }));
+    : allowedCareerIds.map((id) => ({
+      id,
+      name: id === "sistemas" ? "Ingeniería de Sistemas" : id === "idiomas" ? "Idiomas Modernos" : id,
+    }));
 
   useEffect(() => {
     if (allowedCareerIds.includes(career)) return;
@@ -1659,15 +1838,18 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
       const cachedFlow = readConvexCache("flows.getFlow", careerArgs, { allowStale: true, fallback: null })
         ?? (careerId === career ? flowData : null);
       if (!cachedFlow) return;
+      const statusUpdates = getSharedStatusUpdates(flowData, cachedFlow, [{ courseCode, status }]);
       writeConvexCache("flows.getFlow", careerArgs, {
         ...cachedFlow,
-        statuses: { ...(cachedFlow.statuses ?? {}), [courseCode]: status },
-      });
+        statuses: { ...(cachedFlow.statuses ?? {}), ...statusUpdates },
+      }, { version: getConvexCacheMeta("flows.getFlow", careerArgs)?.version });
     });
-    const result = await setStatus({ userEmail: currentUser.email, career, courseCode, status });
-    const payloadSize = formatApproxBytes(result?.payloadBytes ?? estimateJsonBytes(result));
+    const payload = { userEmail: currentUser.email, career, courseCode, status };
+    const requestSize = estimateJsonBytes(payload);
+    const result = await setStatus(payload);
+    const responseSize = estimateJsonBytes(result);
     const changeLabel = previousStatus === status ? "sin cambios" : status;
-    console.info(`[Synapse flow] ${courseName}: ${changeLabel} · ${payloadSize}`);
+    console.info(`[Synapse flujograma] ${courseName}: ${changeLabel}; solicitud ${formatApproxBytes(requestSize)}, respuesta ${formatApproxBytes(responseSize)}, filas insertadas ${result?.rowsInserted ?? 0}, filas actualizadas ${result?.rowsUpdated ?? 0}.`);
   }
 
   async function updatePeriodStatuses(changes) {
@@ -1681,21 +1863,24 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
       const cachedFlow = readConvexCache("flows.getFlow", careerArgs, { allowStale: true, fallback: null })
         ?? (careerId === career ? flowData : null);
       if (!cachedFlow) return;
-      const nextFlow = { ...cachedFlow, statuses: { ...(cachedFlow.statuses ?? {}), ...Object.fromEntries(changes.map(({ courseCode, status }) => [courseCode, status])) } };
+      const statusUpdates = getSharedStatusUpdates(flowData, cachedFlow, changes);
+      const nextFlow = { ...cachedFlow, statuses: { ...(cachedFlow.statuses ?? {}), ...statusUpdates } };
       cachedFlows.push({ careerArgs, cachedFlow });
-      writeConvexCache("flows.getFlow", careerArgs, nextFlow);
+      writeConvexCache("flows.getFlow", careerArgs, nextFlow, { version: getConvexCacheMeta("flows.getFlow", careerArgs)?.version });
     });
 
     try {
-      const result = await setPeriodStatuses({
+      const payload = {
         userEmail: currentUser.email,
         career,
         changes: changes.map(({ courseCode, status }) => ({ courseCode, status })),
-      });
-      console.info(`[Synapse flow] Periodo: ${changes.length} materias actualizadas · ${formatApproxBytes(result?.payloadBytes ?? estimateJsonBytes(result))}`);
+      };
+      const requestSize = estimateJsonBytes(payload);
+      const result = await setPeriodStatuses(payload);
+      console.info(`[Synapse flujograma] Periodo: ${result?.changedCount ?? changes.length} materias actualizadas; solicitud ${formatApproxBytes(requestSize)}, respuesta ${formatApproxBytes(estimateJsonBytes(result))}.`);
     } catch (error) {
       setOptimisticStatuses(previousStatuses);
-      cachedFlows.forEach(({ careerArgs, cachedFlow }) => writeConvexCache("flows.getFlow", careerArgs, cachedFlow));
+      cachedFlows.forEach(({ careerArgs, cachedFlow }) => writeConvexCache("flows.getFlow", careerArgs, cachedFlow, { version: getConvexCacheMeta("flows.getFlow", careerArgs)?.version }));
       setFlowStatusError(error?.message ?? "No se pudieron guardar los estados del periodo.");
     }
   }
@@ -1703,22 +1888,27 @@ function ConvexFlowSection({ currentUser, canLoadMaterials = true, canSeeAllCare
   async function updateDifficultyRating(courseCode, stars) {
     if (!isAdminUser) return;
     const previousRatings = optimisticDifficultyRatings;
-    const nextRatings = { ...previousRatings, [courseCode]: stars };
+    const nextRatings = { ...previousRatings };
+    if (stars === 0) delete nextRatings[courseCode];
+    else nextRatings[courseCode] = stars;
     const flowArgs = { career, userEmail: currentUser.email };
     setOptimisticDifficultyRatings(nextRatings);
     setDifficultyRatingError("");
     const cachedFlow = readConvexCache("flows.getFlow", flowArgs, { allowStale: true, fallback: null }) ?? flowData;
     if (cachedFlow) {
-      writeConvexCache("flows.getFlow", flowArgs, { ...cachedFlow, difficultyRatings: nextRatings });
+      writeConvexCache("flows.getFlow", flowArgs, { ...cachedFlow, difficultyRatings: nextRatings }, { version: getConvexCacheMeta("flows.getFlow", flowArgs)?.version });
     }
 
     try {
-      await setDifficultyRating({ adminEmail: currentUser.email, career, courseCode, stars });
+      const payload = { adminEmail: currentUser.email, career, courseCode, stars };
+      const result = await setDifficultyRating(payload);
+      if (result?.changed !== false) clearConvexCache("flows.listCourses");
+      console.info(`[Synapse flujograma] Dificultad ${courseCode}: solicitud ${formatApproxBytes(estimateJsonBytes(payload))}, respuesta ${formatApproxBytes(estimateJsonBytes(result))}.`);
     } catch (error) {
       setOptimisticDifficultyRatings(previousRatings);
       setDifficultyRatingError(error?.message ?? "No se pudo guardar la dificultad de la materia.");
       if (cachedFlow) {
-        writeConvexCache("flows.getFlow", flowArgs, { ...cachedFlow, difficultyRatings: previousRatings });
+        writeConvexCache("flows.getFlow", flowArgs, { ...cachedFlow, difficultyRatings: previousRatings }, { version: getConvexCacheMeta("flows.getFlow", flowArgs)?.version });
       }
     }
   }
@@ -1767,7 +1957,6 @@ function toProfileArgs(user) {
     nationalId: user.nationalId,
     phone: user.phone,
     careers: Array.isArray(user.careers) ? user.careers : undefined,
-    supabaseAuthUserId: user.supabaseAuthUserId,
   };
   return Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined && value !== ""));
 }
@@ -1781,16 +1970,4 @@ function filterMaterials(materials, search, format, level = "Todos", subject = "
     const matchesSubject = subject === "Todas" || subjectIds.includes(subject);
     return matchesSearch && matchesFormat && matchesLevel && matchesSubject;
   });
-}
-
-function persistLocalUserProfile(user) {
-  try {
-    const users = JSON.parse(window.localStorage.getItem(LOCAL_USERS_KEY) ?? "{}");
-    if (users[user.email]) {
-      users[user.email] = { ...users[user.email], ...user };
-      window.localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
-    }
-  } catch (error) {
-    console.warn("No se pudo actualizar el perfil local.", error);
-  }
 }

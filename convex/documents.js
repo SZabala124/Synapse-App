@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query } from "./_generated/server";
-import { assertAdmin } from "./users";
+import { assertAdmin, resolveActivePlan } from "./users";
+import { requireAuthenticatedEmail } from "./security";
 import { flowPrograms } from "./flowData";
 
 const MATERIALS_CANDIDATE_PAGE_SIZE = 6;
@@ -21,20 +22,21 @@ export const list = query({
     lightweight: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const viewer = await resolveViewer(ctx, args.userEmail);
     const format = normalizeMaterialFormat(args.format && args.format !== "Todos" ? args.format : undefined);
     const level = args.level && args.level !== "Todos" ? args.level : undefined;
     const subject = args.subject && args.subject !== "Todas" ? args.subject : undefined;
     const rawSearch = String(args.search ?? "").trim();
     const search = normalizeSearchText(rawSearch);
-    const userProfile = args.userEmail ? await findUserByEmail(ctx, args.userEmail) : null;
+    const userProfile = viewer.profile;
     const allowedSubjects = allowedSubjectCodesForUser(userProfile);
     const limit = Math.min(Math.max(args.limit ?? 6, 1), 2000);
 
     // The full favorite list is only necessary for the saved-only filter.
-    const favorites = (!args.lightweight && args.savedOnly && args.userEmail)
+    const favorites = (!args.lightweight && args.savedOnly && viewer.email)
       ? await ctx.db
         .query("documentFavorites")
-        .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail))
+        .withIndex("by_user", (q) => q.eq("userEmail", viewer.email))
         .collect()
       : [];
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
@@ -61,7 +63,7 @@ export const list = query({
       return limited.map((doc) => withDenormalizedRatingStats(doc, null));
     }
 
-    return await hydrateDocumentPage(ctx, limited, args.userEmail, favoriteIds, Boolean(args.savedOnly));
+    return await hydrateDocumentPage(ctx, limited, viewer.email, favoriteIds, Boolean(args.savedOnly));
   },
 });
 
@@ -77,17 +79,18 @@ export const listPage = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
+    const viewer = await resolveViewer(ctx, args.userEmail);
     const format = normalizeMaterialFormat(args.format && args.format !== "Todos" ? args.format : undefined);
     const level = args.level && args.level !== "Todos" ? args.level : undefined;
     const subject = args.subject && args.subject !== "Todas" ? args.subject : undefined;
     const rawSearch = String(args.search ?? "").trim();
     const search = normalizeSearchText(rawSearch);
-    const userProfile = args.userEmail ? await findUserByEmail(ctx, args.userEmail) : null;
+    const userProfile = viewer.profile;
     const allowedSubjects = allowedSubjectCodesForUser(userProfile);
-    const favorites = args.savedOnly && args.userEmail
+    const favorites = args.savedOnly && viewer.email
       ? await ctx.db
         .query("documentFavorites")
-        .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail))
+        .withIndex("by_user", (q) => q.eq("userEmail", viewer.email))
         .collect()
       : [];
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
@@ -102,7 +105,7 @@ export const listPage = query({
     );
 
     return {
-      page: await hydrateDocumentPage(ctx, matches, args.userEmail, favoriteIds, Boolean(args.savedOnly)),
+      page: await hydrateDocumentPage(ctx, matches, viewer.email, favoriteIds, Boolean(args.savedOnly)),
       isDone: candidatePage.isDone,
       continueCursor: candidatePage.continueCursor,
     };
@@ -114,17 +117,18 @@ export const metadataManifest = query({
     userEmail: v.string(),
   },
   handler: async (ctx, args) => {
-    const userProfile = await findUserByEmail(ctx, args.userEmail);
+    const viewer = await resolveViewer(ctx, args.userEmail);
+    const userProfile = viewer.profile;
     const allowedSubjects = allowedSubjectCodesForUser(userProfile);
     const [documents, favorites, ratings] = await Promise.all([
       ctx.db.query("documents").withIndex("by_created").order("desc").collect(),
       ctx.db
         .query("documentFavorites")
-        .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail))
+        .withIndex("by_user", (q) => q.eq("userEmail", viewer.email))
         .collect(),
       ctx.db
         .query("documentRatings")
-        .withIndex("by_user_document", (q) => q.eq("userEmail", args.userEmail))
+        .withIndex("by_user_document", (q) => q.eq("userEmail", viewer.email))
         .collect(),
     ]);
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
@@ -151,13 +155,14 @@ export const changesSince = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const viewer = await resolveViewer(ctx, args.userEmail);
     const currentRevision = await currentLibraryRevision(ctx);
     if (args.revision >= currentRevision) {
       return { currentRevision, resetRequired: false, changes: [] };
     }
 
     const limit = Math.min(Math.max(args.limit ?? 250, 1), 500);
-    const userProfile = await findUserByEmail(ctx, args.userEmail);
+    const userProfile = viewer.profile;
     const allowedSubjects = allowedSubjectCodesForUser(userProfile);
     const changes = await ctx.db
       .query("libraryChanges")
@@ -171,17 +176,28 @@ export const changesSince = query({
 
     const visibleChanges = [];
     for (const change of changes) {
+      if (change.operation === "view") {
+        if (change.after && documentVisibleForSubjects(change.after, allowedSubjects)) {
+          visibleChanges.push({
+            revision: change.revision,
+            operation: "view",
+            documentId: change.documentId,
+            row: change.after,
+          });
+        }
+        continue;
+      }
       const beforeVisible = change.before && documentVisibleForSubjects(change.before, allowedSubjects);
       const afterVisible = change.after && documentVisibleForSubjects(change.after, allowedSubjects);
       if (afterVisible) {
         const [favorite, rating] = await Promise.all([
           ctx.db
             .query("documentFavorites")
-            .withIndex("by_user_document", (q) => q.eq("userEmail", args.userEmail).eq("documentId", change.documentId))
+            .withIndex("by_user_document", (q) => q.eq("userEmail", viewer.email).eq("documentId", change.documentId))
             .unique(),
           ctx.db
             .query("documentRatings")
-            .withIndex("by_user_document", (q) => q.eq("userEmail", args.userEmail).eq("documentId", change.documentId))
+            .withIndex("by_user_document", (q) => q.eq("userEmail", viewer.email).eq("documentId", change.documentId))
             .unique(),
         ]);
         visibleChanges.push({
@@ -221,12 +237,13 @@ export const facets = query({
     userEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const viewer = await resolveViewer(ctx, args.userEmail);
     const format = normalizeMaterialFormat(args.format && args.format !== "Todos" ? args.format : undefined);
     const level = args.level && args.level !== "Todos" ? args.level : undefined;
     const subject = args.subject && args.subject !== "Todas" ? args.subject : undefined;
     const rawSearch = String(args.search ?? "").trim();
     const search = normalizeSearchText(rawSearch);
-    const userProfile = args.userEmail ? await findUserByEmail(ctx, args.userEmail) : null;
+    const userProfile = viewer.profile;
     const allowedSubjects = allowedSubjectCodesForUser(userProfile);
     const canUseAggregateStats = !search && !args.savedOnly && !allowedSubjects;
     if (canUseAggregateStats) {
@@ -236,10 +253,10 @@ export const facets = query({
         .first();
       if (stats) return buildFacetResultFromStats(stats, { format, level, subject });
     }
-    const favorites = args.userEmail
+    const favorites = viewer.email
       ? await ctx.db
         .query("documentFavorites")
-        .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail))
+        .withIndex("by_user", (q) => q.eq("userEmail", viewer.email))
         .collect()
       : [];
     const favoriteIds = new Set(favorites.map((row) => row.documentId));
@@ -543,6 +560,22 @@ async function insertLibraryChange(ctx, revision, before, after) {
   });
 }
 
+async function recordLibraryViewChange(ctx, document) {
+  const revision = await bumpLibraryRevision(ctx);
+  await ctx.db.insert("libraryChanges", {
+    key: LIBRARY_STATE_KEY,
+    revision,
+    operation: "view",
+    documentId: document._id,
+    after: {
+      _id: document._id,
+      subjects: documentSubjects(document),
+      viewCount: document.viewCount ?? 0,
+    },
+    createdAt: Date.now(),
+  });
+}
+
 function buildLibraryStats(documents) {
   const stats = emptyLibraryStats();
   for (const document of documents) applyDocumentToStats(stats, document, 1);
@@ -758,6 +791,14 @@ async function findUserByEmail(ctx, email) {
     .first();
 }
 
+async function resolveViewer(ctx, claimedEmail) {
+  if (!claimedEmail) return { email: null, profile: null };
+  const { email } = await requireAuthenticatedEmail(ctx, claimedEmail);
+  const profile = await findUserByEmail(ctx, email);
+  if (!profile) return { email, profile: null };
+  return { email, profile: { ...profile, plan: await resolveActivePlan(ctx, profile, email) } };
+}
+
 function allowedSubjectCodesForUser(userProfile) {
   if (userProfile?.userType === "admin") return null;
   if (!userProfile?.careers?.length) return new Set();
@@ -925,11 +966,18 @@ export const incrementView = mutation({
     id: v.id("documents"),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticatedEmail(ctx);
     const document = await ctx.db.get(args.id);
     if (!document) throw new Error("Documento no disponible.");
-    await ctx.db.patch(args.id, {
+    const updatedDocument = {
+      ...document,
       viewCount: (document.viewCount ?? 0) + 1,
+    };
+    await ctx.db.patch(args.id, {
+      viewCount: updatedDocument.viewCount,
     });
+    await recordLibraryViewChange(ctx, updatedDocument);
+    return { viewCount: updatedDocument.viewCount };
   },
 });
 
@@ -946,7 +994,7 @@ export const rate = mutation({
     const safeRating = Math.min(5, Math.max(1, Math.round(args.rating)));
     const existing = await ctx.db
       .query("documentRatings")
-      .withIndex("by_user_document", (q) => q.eq("userEmail", args.userEmail).eq("documentId", args.id))
+      .withIndex("by_user_document", (q) => q.eq("userEmail", userEmail).eq("documentId", args.id))
       .unique();
 
     const now = Date.now();
@@ -954,7 +1002,7 @@ export const rate = mutation({
       await ctx.db.patch(existing._id, { rating: safeRating, updatedAt: now });
     } else {
       await ctx.db.insert("documentRatings", {
-        userEmail: args.userEmail,
+        userEmail,
         documentId: args.id,
         rating: safeRating,
         createdAt: now,
@@ -982,12 +1030,13 @@ export const removeRating = mutation({
     userEmail: v.string(),
   },
   handler: async (ctx, args) => {
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const document = await ctx.db.get(args.id);
     if (!document) throw new Error("Documento no disponible.");
 
     const existing = await ctx.db
       .query("documentRatings")
-      .withIndex("by_user_document", (q) => q.eq("userEmail", args.userEmail).eq("documentId", args.id))
+      .withIndex("by_user_document", (q) => q.eq("userEmail", userEmail).eq("documentId", args.id))
       .unique();
 
     if (!existing) return;
@@ -1013,12 +1062,13 @@ export const toggleSaved = mutation({
     userEmail: v.string(),
   },
   handler: async (ctx, args) => {
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const document = await ctx.db.get(args.id);
     if (!document) throw new Error("Documento no disponible.");
 
     const existing = await ctx.db
       .query("documentFavorites")
-      .withIndex("by_user_document", (q) => q.eq("userEmail", args.userEmail).eq("documentId", args.id))
+      .withIndex("by_user_document", (q) => q.eq("userEmail", userEmail).eq("documentId", args.id))
       .unique();
 
     if (existing) {
@@ -1027,7 +1077,7 @@ export const toggleSaved = mutation({
     }
 
     await ctx.db.insert("documentFavorites", {
-      userEmail: args.userEmail,
+      userEmail,
       documentId: args.id,
       createdAt: Date.now(),
     });

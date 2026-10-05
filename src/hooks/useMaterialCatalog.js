@@ -152,6 +152,9 @@ function applyCatalogChanges(rows, changes) {
   for (const change of changes) {
     if (change.operation === "delete") {
       byId.delete(change.documentId);
+    } else if (change.operation === "view") {
+      const current = byId.get(change.documentId);
+      if (current) byId.set(change.documentId, { ...current, ...change.row });
     } else if (change.row?._id) {
       byId.set(change.row._id, change.row);
     }
@@ -161,12 +164,12 @@ function applyCatalogChanges(rows, changes) {
 
 function logCatalogReuse(catalog) {
   const count = catalog.rows?.length ?? 0;
-  console.info(`[Synapse catalog] Caché local reutilizado: ${count} metadatos, revisión ${catalog.revision}. No se descargó el catálogo completo.`);
+  console.info(`[Synapse catalog] Caché local reutilizado: 0 B descargados; ${formatBytes(estimateJsonBytes({ revision: catalog.revision, rows: catalog.rows ?? [] }))} JSON UTF-8 local, ${count} metadatos, revisión ${catalog.revision}.`);
 }
 
 function logCatalogDownload(kind, payload, count) {
   const bytes = estimateJsonBytes(payload);
-  console.info(`[Synapse catalog] Descarga ${kind}: ${count} ${kind === "manifest" ? "metadatos" : "cambios"}, ${formatBytes(bytes)} aprox.`);
+  console.info(`[Synapse catalog] Descarga ${kind}: ${count} ${kind === "manifest" ? "metadatos" : "cambios"}, ${formatBytes(bytes)} JSON UTF-8 serializado.`);
 }
 
 function estimateJsonBytes(value) {
@@ -182,9 +185,9 @@ function estimateJsonBytes(value) {
 }
 
 function formatBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024) return `${bytes} B (${(bytes / 1024).toFixed(2)} KB)`;
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb >= 100 ? 0 : 1)} KB`;
+  if (kb < 1024) return `${bytes} B (${kb.toFixed(2)} KB)`;
   const mb = kb / 1024;
-  return `${mb.toFixed(mb >= 10 ? 1 : 2)} MB`;
+  return `${bytes} B (${mb.toFixed(3)} MB)`;
 }

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { flowPrograms as curriculumPrograms } from "../../convex/flowData";
 import { RatingSummary } from "./MaterialsView";
 import { matchesFuzzySearch } from "../utils/fuzzySearch";
+import { missingFlowRequirements as missingRequirements, prerequisiteCourseCodes as parsePrereqs } from "../utils/flowPrerequisites";
 
 const statusOptions = ["Cursada", "En curso", "Planificada", "Pendiente"];
 const difficultyLabels = ["Sin calificar", "Muy Fácil", "Fácil", "Medio", "Difícil", "Muy Difícil", "Extremo"];
@@ -26,6 +27,36 @@ const additionalRequirementsByCareer = {
   quimica: [
     { code: "BPTHE71", name: "Servicio comunitario", note: "FGTHE01 y 90 créditos requeridos" },
     { code: "FPTIQ04", name: "Defensa TG", note: "FPTSP22 requerido" },
+  ],
+  psicologia: [
+    { code: "FGTHE01", name: "Taller Inducción al Servicio Comunitario" },
+    { code: "BPTHE71", name: "Servicio Comunitario" },
+    { code: "FPTSI10", name: "Defensa de Trabajo de Grado" },
+  ],
+  idiomas: [
+    { code: "BPTHE71", name: "Servicio Comunitario", note: "90 créditos y FGTHE01 Taller de Inducción al Servicio Comunitario aprobado." },
+    { name: "Condición de inglés", note: "Aprobar 6 créditos de Inglés IV e Inglés V." },
+    { code: "FPTID50", name: "Pasantía - Idiomas Modernos", note: "Prelación: 120 créditos." },
+    { code: "FPTID01", name: "Defensa de Trabajo de Grado", note: "Haber cursado FPTI51 Taller de Trabajo de Grado." },
+    { name: "Importante", note: "Todo estudiante debe presentar la Prueba de Ubicación de Inglés." },
+  ],
+  "estudios-internacionales": [
+    { code: "FPTELI0", name: "Pasantía", note: "105 créditos requeridos." },
+    { code: "BPTHE71", name: "Servicio Comunitario", note: "FGTHE01 aprobado y 90 créditos requeridos." },
+    { code: "FPTEP13", name: "Defensa de Trabajo Final", note: "FPTEP07 Taller de Trabajo Final y 135 créditos requeridos." },
+  ],
+  "economia-empresarial": [
+    { code: "FPTAK41", name: "Pasantía", note: "120 créditos requeridos." },
+    { code: "BPTDI01", name: "Servicio Comunitario", note: "FGTDI01 requerido." },
+    { code: "FPTAK40", name: "Defensa de Trabajo de Grado", note: "BPTGP83 Taller de Trabajo de Grado requerido." },
+    { code: "FPTAK28", name: "Herramientas Tecnológicas I", note: "Si aprobó Cálculo IV y Estadística III, no necesita cursarla. Si aprobó solo una de esas materias, debe cursarla. Si ya aprobó alguna, puede tomarla como electiva con autorización del Director." },
+    { code: "FPTAK29", name: "Herramientas Tecnológicas II", note: "Puede ser electiva para otras carreras. Si ya aprobó Cálculo IV o Estadística III, puede tomarla como electiva con autorización del Director." },
+    { code: "FPTBC05", name: "Bootcamp de Analítica de Datos", note: "Obligatorio para quienes al período 2425-2 no habían aprobado Pensamiento Computacional o su equivalente; deben cumplir su prelación." },
+  ],
+  "contaduria-publica": [
+    { code: "BPTDI01", name: "Servicio Comunitario", note: "FGTDI01 y 90 créditos requeridos." },
+    { code: "FPTBC45", name: "Pasantías - Contaduría Pública", note: "120 créditos requeridos." },
+    { code: "FPTBC40", name: "Defensa de Trabajo de Grado", note: "BPTGF83 requerido." },
   ],
 };
 
@@ -57,6 +88,8 @@ export function FlowView({
   const [activeSubsection, setActiveSubsection] = useState("flow");
   const [ratingSort, setRatingSort] = useState("desc");
   const [ratingSearch, setRatingSearch] = useState("");
+  const [editingRatingCode, setEditingRatingCode] = useState(null);
+  const [ratingDraft, setRatingDraft] = useState("");
 
   const officialCourseNames = useMemo(() => {
     const names = new Map();
@@ -93,6 +126,8 @@ export function FlowView({
   const completed = allCourses.filter((course) => visibleStatus(course, flowStatuses, allCourses) === "Cursada");
   const totalCourses = allCourses.length;
   const credits = completed.reduce((sum, course) => sum + course.credits, 0);
+  const bpCredits = allCourses.reduce((sum, course) =>
+    sum + (course.code.toUpperCase().startsWith("BP") && (flowStatuses[courseKey(course)] ?? course.status) === "Cursada" ? 3 : 0), 0);
   const totalCredits = allCourses.reduce((sum, course) => sum + course.credits, 0);
   const percent = totalCourses ? Math.round((completed.length / totalCourses) * 100) : 0;
   const careerOptions = careers.length ? careers : [{ id: selectedCareer, name: flowProgram?.name ?? "Ingeniería de Sistemas" }];
@@ -279,6 +314,7 @@ export function FlowView({
             <span><strong>{percent}%</strong><small>completado</small></span>
             <span><strong>{completed.length}/{totalCourses}</strong><small>materias cursadas</small></span>
             <span><strong>{credits}/{totalCredits}</strong><small>créditos cursados</small></span>
+            <span><strong>{bpCredits}</strong><small>créditos BP cursados</small></span>
           </div>
         </div>
       </div>
@@ -301,12 +337,21 @@ export function FlowView({
             />
           )}
           {activeSubsection === "flow" ? (
-            <div className="flow-status-legend" aria-label="Estados del flujograma">
-              <span className="flow-status is-completed">Cursada</span>
-              <span className="flow-status is-current">En curso</span>
-              <span className="flow-status is-planned">Planificada</span>
-              <span className="flow-status is-pending">Pendiente</span>
-              <span className="flow-status is-locked">Bloqueada</span>
+            <div className="flow-status-legend-wrap">
+              <div className="flow-status-legend" aria-label="Estados del flujograma">
+                <span className="flow-status is-completed">Cursada</span>
+                <span className="flow-status is-current">En curso</span>
+                <span className="flow-status is-planned">Planificada</span>
+                <span className="flow-status is-pending">Pendiente</span>
+                <span className="flow-status is-locked">Bloqueada</span>
+              </div>
+              <div className="flow-hours-legend" aria-label="Leyenda de horas y créditos">
+                <span title="Horas de aula"><b>A</b> Aula</span>
+                <span title="Horas de prácticas supervisadas"><b>PS</b> Prácticas</span>
+                <span title="Horas de laboratorio"><b>L</b> Laboratorio</span>
+                <span title="Horas de aprendizaje autónomo"><b>AA</b> Autónomo</span>
+                <span title="Número de créditos"><b>C</b> Créditos</span>
+              </div>
             </div>
           ) : (
             <div className="flow-rating-order" role="group" aria-label="Ordenar calificaciones">
@@ -367,8 +412,8 @@ export function FlowView({
           {flowPeriodsWithIds.map((courses, index) => (
             <section className="flow-period" key={index}>
               <div className="flow-period-header">
-                <span>{index + 1}</span>
-                <strong>Periodo</strong>
+                <span>{flowProgram?.periodLabels?.[index] ?? index + 1}</span>
+                <strong>{flowProgram?.periodLabels?.[index] === "Minors" ? "" : "Periodo"}</strong>
                 {(() => {
                   const rawStatuses = courses.map((course) => flowStatuses[courseKey(course)] ?? course.status);
                   const currentStatus = rawStatuses.every((status) => status === rawStatuses[0]) ? rawStatuses[0] : "Mixto";
@@ -414,8 +459,6 @@ export function FlowView({
                       <h3 className="flow-course-name">{course.name}</h3>
                       <DifficultyStars
                         stars={difficultyRatings[course.code] ?? 0}
-                        canEdit={isAdmin}
-                        onChange={(stars) => onDifficultyRatingChange?.(course.code, stars)}
                         label={`Dificultad de ${course.name}`}
                       />
                       <div className="flow-card-tags">
@@ -481,22 +524,12 @@ export function FlowView({
             <h3>Requisitos adicionales</h3>
             <div className="additional-requirements">
               {additionalRequirements.map((requirement) => (
-                <article className="requirement-card" key={requirement.code}>
-                  <strong>{requirement.code} · {requirement.name}</strong>
-                  <span>{requirement.note}</span>
+                <article className="requirement-card" key={requirement.code || requirement.name}>
+                  <strong>{requirement.code ? `${requirement.code} · ` : ""}{requirement.name}</strong>
+                  {requirement.note && <span>{requirement.note}</span>}
                 </article>
               ))}
             </div>
-          </section>
-          <section className="flow-legend-box">
-            <h3>Leyenda</h3>
-            <dl>
-              <div><dt>A</dt><dd>Horas de aula</dd></div>
-              <div><dt>PS</dt><dd>Horas de prácticas supervisadas</dd></div>
-              <div><dt>L</dt><dd>Horas de laboratorio</dd></div>
-              <div><dt>AA</dt><dd>Horas de aprendizaje autonomo</dd></div>
-              <div><dt>C</dt><dd>Número de créditos</dd></div>
-            </dl>
           </section>
         </div>
           </div>
@@ -520,11 +553,12 @@ export function FlowView({
                     <th scope="col">Código</th>
                     <th scope="col">Estrellas</th>
                     <th scope="col">Dificultad</th>
+                    {isAdmin && <th scope="col">Acción</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {searchedCourses.length === 0 && (
-                    <tr><td className="flow-ratings-empty" colSpan={4}>No se encontraron materias.</td></tr>
+                    <tr><td className="flow-ratings-empty" colSpan={isAdmin ? 5 : 4}>No se encontraron materias.</td></tr>
                   )}
                   {searchedCourses.map(({ course, stars }) => (
                     <tr key={course.id}>
@@ -533,12 +567,46 @@ export function FlowView({
                       <td>
                         <DifficultyStars
                           stars={stars}
-                          canEdit={isAdmin}
-                          onChange={(nextStars) => onDifficultyRatingChange?.(course.code, nextStars)}
                           label={`Dificultad de ${course.name}`}
                         />
                       </td>
-                      <td><span className={`flow-rating-tag is-level-${stars || "unrated"}`}>{difficultyLabels[stars]}</span></td>
+                      <td><span className={`flow-rating-tag is-level-${ratingLevel(stars)}`}>{difficultyLabels[ratingLevel(stars)]}</span></td>
+                      {isAdmin && (
+                        <td className="flow-rating-row-actions">
+                          {editingRatingCode === course.code ? (
+                            <div className="flow-rating-editor">
+                              <input
+                                type="number"
+                                min="0"
+                                max="6"
+                                step="any"
+                                value={ratingDraft}
+                                aria-label={`Dificultad numérica de ${course.name}`}
+                                onChange={(event) => setRatingDraft(event.target.value)}
+                              />
+                              <button
+                                className="flow-rating-edit-button is-save"
+                                type="button"
+                                disabled={!ratingDraft || !Number.isFinite(Number(ratingDraft)) || Number(ratingDraft) < 0 || Number(ratingDraft) > 6}
+                                onClick={() => {
+                                  onDifficultyRatingChange?.(course.code, Number(ratingDraft));
+                                  setEditingRatingCode(null);
+                                }}
+                              >Guardar</button>
+                              <button className="flow-rating-edit-button" type="button" onClick={() => setEditingRatingCode(null)}>Cancelar</button>
+                            </div>
+                          ) : (
+                            <button
+                              className="flow-rating-edit-button"
+                              type="button"
+                              onClick={() => {
+                                setEditingRatingCode(course.code);
+                                setRatingDraft(stars ? String(stars) : "");
+                              }}
+                            >Editar</button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -557,11 +625,9 @@ export function FlowView({
           course={selectedCourse}
           status={visibleStatus(selectedCourse, flowStatuses, allCourses)}
           difficultyStars={difficultyRatings[selectedCourse.code] ?? 0}
-          isAdmin={isAdmin}
           allCourses={allCourses}
           materials={materials}
           onStatusChange={(nextStatus) => updateStatus(selectedCourse, nextStatus)}
-          onDifficultyRatingChange={(stars) => onDifficultyRatingChange?.(selectedCourse.code, stars)}
           onOpenMaterialInLibrary={onOpenMaterialInLibrary}
           onClose={() => setSelectedCourse(null)}
         />,
@@ -722,37 +788,22 @@ function NoticeModal({ notice, onClose }) {
   );
 }
 
-function DifficultyStars({ stars, canEdit, onChange, label }) {
+function ratingLevel(stars) {
+  if (!stars) return 0;
+  return Math.min(6, Math.max(1, Math.round(stars)));
+}
+
+function DifficultyStars({ stars, label }) {
   return (
-    <div className={canEdit ? "flow-difficulty is-editable" : "flow-difficulty"} aria-label={`${label}: ${stars} de 6 estrellas`}>
+    <div className="flow-difficulty" aria-label={`${label}: ${stars} de 6 estrellas`}>
       <span className="flow-difficulty-label">
         <span className="flow-difficulty-label-desktop">Dificultad</span>
         <span className="flow-difficulty-label-mobile">Dif.</span>
       </span>
-      <div className="flow-difficulty-stars" role={canEdit ? "group" : undefined} aria-label={label}>
+      <div className="flow-difficulty-stars" aria-label={label}>
         {Array.from({ length: 6 }, (_, index) => {
-          const value = index + 1;
-          const active = value <= stars;
-          return canEdit ? (
-            <button
-              className={active ? "flow-difficulty-star is-active" : "flow-difficulty-star"}
-              key={value}
-              type="button"
-              aria-label={`${value} ${value === 1 ? "estrella" : "estrellas"}`}
-              aria-pressed={stars === value}
-              title={`Asignar ${value} ${value === 1 ? "estrella" : "estrellas"}`}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onChange?.(value);
-              }}
-              onKeyDown={(event) => event.stopPropagation()}
-            >
-              ★
-            </button>
-          ) : (
-            <span className={active ? "flow-difficulty-star is-active" : "flow-difficulty-star"} key={value} aria-hidden="true">★</span>
-          );
+          const fill = Math.max(0, Math.min(100, (stars - index) * 100));
+          return <span className="flow-difficulty-star" style={{ "--star-fill": `${fill}%` }} key={index} aria-hidden="true">★</span>;
         })}
       </div>
       <span className="flow-difficulty-count">{stars || "–"}/6</span>
@@ -764,12 +815,10 @@ function CourseModal({
   course,
   status,
   difficultyStars,
-  isAdmin,
   allCourses,
   materials,
   onClose,
   onStatusChange,
-  onDifficultyRatingChange,
   onOpenMaterialInLibrary,
 }) {
   const prereqText = formatPrereq(course.prereq, allCourses);
@@ -803,12 +852,11 @@ function CourseModal({
             </div>
             <DifficultyStars
               stars={difficultyStars}
-              canEdit={isAdmin}
-              onChange={onDifficultyRatingChange}
               label={`Dificultad de ${course.name}`}
             />
             <dl className="course-detail-grid">
               <div><dt>Creditos</dt><dd>{course.credits}</dd></div>
+              {course.code.toUpperCase().startsWith("BP") && <div><dt>Creditos BP</dt><dd>3</dd></div>}
               <div><dt>Horas</dt><dd>A {course.hours?.a ?? 4} · PS {course.hours?.ps ?? 0} · L {course.hours?.l ?? 0} · AA {course.hours?.aa ?? 4}</dd></div>
               <div><dt>Periodo sugerido</dt><dd>Segun flujograma activo</dd></div>
               <div>
@@ -971,39 +1019,29 @@ function isLocked(course, statuses, allCourses) {
   return missingRequirements(course, statuses, allCourses).length > 0;
 }
 
-function missingRequirements(course, statuses, allCourses) {
-  const reqs = parsePrereqs(course.prereq);
-  return reqs.filter((code) => {
-    const parent = allCourses.find((item) => item.code === code);
-    if (!parent) return false;
-    return (statuses[courseKey(parent)] ?? parent.status) !== "Cursada";
-  });
-}
-
 function missingRequirementDetails(course, statuses, allCourses) {
-  return missingRequirements(course, statuses, allCourses).map((code) => {
-    const parent = allCourses.find((item) => item.code === code);
+  return missingRequirements(course, statuses, allCourses).map((group) => {
     return {
-      code,
-      name: parent?.name ?? "Requisito académico",
+      code: group.label,
+      name: group.alternatives.map((requirement) => {
+        if (requirement.type === "bpCredits") return `${requirement.value} créditos BP`;
+        if (requirement.type === "credits") return `${requirement.value} créditos`;
+        const parent = allCourses.find((item) => item.code === requirement.code);
+        return parent ? `${parent.code} · ${parent.name}` : requirement.code;
+      }).join(" o "),
     };
   });
 }
 
 function formatPrereq(prereq, allCourses) {
-  const codes = parsePrereqs(prereq);
-  if (!codes.length) return "No requiere";
-  return codes
-    .map((code) => {
-      const course = allCourses.find((item) => item.code === code);
-      return course ? `${code} · ${course.name}` : code;
-    })
-    .join(" + ");
-}
-
-function parsePrereqs(prereq) {
-  if (!prereq) return [];
-  return prereq.split("+").map((item) => item.trim()).filter(Boolean);
+  if (!prereq) return "No requiere";
+  return prereq.split("+").map((group) => group.split(/\s+(?:o|or)\s+/i).map((part) => {
+    const label = part.trim();
+    const suggested = /\s*\(S\)$/i.test(label);
+    const code = label.replace(/\s*\(S\)$/i, "");
+    const course = allCourses.find((item) => item.code === code);
+    return course ? `${code} · ${course.name}${suggested ? " (S)" : ""}` : label;
+  }).join(" o ")).join(" + ");
 }
 
 function getDescendants(code, allCourses) {
@@ -1033,7 +1071,7 @@ function statusClass(status) {
 }
 
 function courseKey(course) {
-  return course.code === "FGE" ? `FGE::${course.id}` : course.code;
+  return `COURSE::${course.id}`;
 }
 
 function resolveCourseName(course, officialCourseNames) {

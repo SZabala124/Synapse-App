@@ -38,6 +38,20 @@ export const reset = mutation({
   },
 });
 
+export const updateDisplayName = mutation({
+  args: { adminEmail: v.string(), displayName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await assertAdmin(ctx, args.adminEmail);
+    const displayName = args.displayName.trim();
+    if (displayName.length > 60) throw new Error("El nombre del trimestre no puede superar 60 caracteres.");
+    const term = await currentTerm(ctx);
+    if (!term) throw new Error("El trimestre aún no está configurado.");
+    await ctx.db.patch(term._id, { displayName: displayName || undefined });
+    return null;
+  },
+});
+
 async function startTerm(ctx, term) {
   const startedAt = Date.now();
   const resetAt = nextTermDate(startedAt);

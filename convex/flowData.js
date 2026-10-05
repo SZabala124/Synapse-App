@@ -46,6 +46,9 @@ const mecanicaFirstPeriods = [
   ],
 ];
 
+const psychologyCourse = (code, name, [a, ps, l, aa, credits] = [4, 0, 0, 4, 3], prereq = "") =>
+  course(code, name, prereq, { a, ps, l, aa, credits });
+
 // Legacy course codes that now refer to the shared course code.
 export const COURSE_CODE_ALIASES = {
   FPTMI21: "FPTM21",
@@ -544,7 +547,504 @@ export const flowPrograms = [
       ],
     ],
   },
+  {
+    id: "idiomas",
+    name: "Idiomas Modernos",
+    approval: "Flujograma de componentes educativos de Idiomas Modernos",
+    updatedAt: "Imagen de referencia",
+    periodLabels: ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "Minors"],
+    periods: [
+      [
+        course("FBTLI03", "Introducción a Idiomas"),
+        course("FBTMM02", "Lógica"),
+        course("FBTLI14", "Inglés IV"),
+        course("FBTPS04", "Pensamiento Computacional"),
+        course("FBTEM01", "Competencias para Emprender"),
+      ],
+      [
+        course("FBTHE11", "Venezuela: Identidad y Contexto"),
+        course("FBTEP02", "Mundo Global: Tendencias y Transformaciones"),
+        course("FBTLI15", "Inglés V", "FBTLI14"),
+        course("BPTMM20", "Estadísticas Ciencias Sociales", "FBTMM02"),
+        course("FBTHE05", "Investigación y Sustentabilidad"),
+      ],
+      [
+        course("BPTLI22", "Gramática del Inglés", "FBTLI15"),
+        course("BPTLI13", "Literatura Universal en Inglés"),
+        course("BPELI31/41", "Francés I / Alemán I", "", { ps: 2 }),
+        course("FGELI01", "Lengua Española I"),
+        course("FBTEM02", "Ideas Emprendedoras"),
+      ],
+      [
+        course("BPTLI01", "Inglés Profesional I", "BPTLI22", { a: 6, aa: 6 }),
+        course("BPTLI71", "Técnicas de Comunicación I"),
+        course("BPELI32/42", "Francés II / Alemán II", "BPELI31/41", { ps: 2 }),
+        course("BPTLI05", "Morfosintaxis del Español", "FGELI01"),
+        course("FPTLI24", "Inglés para Negocios Internacionales"),
+      ],
+      [
+        course("BPTLI02", "Inglés Profesional II", "BPTLI01", { a: 6, aa: 6 }),
+        course("BPTLI72", "Técnicas de Comunicación II", "BPTLI71"),
+        course("BPELI33/43", "Francés III / Alemán III", "BPELI32/42", { ps: 2 }),
+        course("FPTLI01", "Negociación"),
+        course("BPTGF46", "Gestión de Capital Humano"),
+      ],
+      [
+        course("BPTLI03", "Inglés Profesional III", "BPTLI02", { a: 6, aa: 6 }),
+        course("FPTLI25", "Creación de Contenidos Digitales"),
+        course("BPELI34/44", "Francés IV / Alemán IV", "BPELI33/43", { ps: 2 }),
+        course("FPTLI61", "Inglés Empresarial"),
+        course("FPDMK01", "Mercadeo Digital", "FBTLI03"),
+      ],
+      [
+        course("BPTLI04", "Inglés Profesional IV", "BPTLI03", { a: 6, aa: 6 }),
+        course("FPTLI02", "Lingüística I", "BPTLI03"),
+        course("BPELI35/45", "Francés V / Alemán V", "BPELI34/44", { ps: 2 }),
+        course("FPTLI04", "Fonética y Fonología", "BPTLI03"),
+        course("FPTCS08", "Creatividad y Diseño de Proyectos Digitales"),
+      ],
+      [
+        course("FPTLI26", "Metodología y Didáctica del Inglés I", "FPTLI02"),
+        course("FPTLI03", "Lingüística II", "FPTLI02"),
+        course("BPELI36/46", "Francés VI / Alemán VI", "BPELI35/45", { ps: 2 }),
+        course("FPTLI17", "Metodología y Didáctica del Español", "BPTLI05 + FPTLI02"),
+        course("FPTLI08", "Estilística de la Traducción", "BPTLI04 + BPTLI05"),
+      ],
+      [
+        course("FPTLI27", "Metodología y Didáctica del Inglés II", "FPTLI26"),
+        course("FPTLI11", "Estudios del Discurso", "FPTLI03"),
+        course("BPELI37/47", "Francés VII / Alemán VII", "BPELI36/46", { ps: 2 }),
+        course("FPTLI21", "Redacción Académica"),
+        course("FPTLI09", "Iniciación a la Traducción", "FPTLI08"),
+      ],
+      [
+        course("FPTMM02", "Visualización y Análisis de Datos"),
+        course("FPTLI22", "Introducción a la Lingüística Aplicada", "FPTLI03"),
+        course("BPELI38/48", "Francés VIII / Alemán VIII", "BPELI37/47", { ps: 2 }),
+        course("FPTLI12", "Metodología de la Investigación de Seminario I", "135 créditos + FPTLI21"),
+        course("FPTLI13", "Iniciación a la Interpretación", "FPTLI09"),
+      ],
+      [
+        course("FPTLI15", "Iniciación a la Traducción Audiovisual", "FPTLI09"),
+        course("FPTLI19", "Localización y Postedición", "FPTLI09"),
+        course("FPTLI18", "Técnicas de Interpretación Especializada", "FPTLI13"),
+        course("FPTI51", "Taller de Trabajo de Grado", "FPTLI12"),
+        course("FPTLI16", "Traducción de Proyectos Digitales", "FPTLI15"),
+      ],
+      [
+        course("FGE", "Electiva I"),
+        course("FGE", "Electiva II"),
+        course("FGE", "Electiva III"),
+        course("FGE", "Electiva IV"),
+        course("FGE", "Electiva V"),
+      ],
+    ],
+  },
+  {
+    id: "estudios-internacionales",
+    name: "Estudios Internacionales",
+    approval: "Flujograma de componentes educativos de Estudios Internacionales",
+    updatedAt: "Imagen de referencia",
+    periodLabels: ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"],
+    periods: [
+      [
+        course("BPTEI03", "Teoría de Relaciones Internacionales I"),
+        course("FBTL06", "Lógica y Argumentación"),
+        course("FBTLI14", "Inglés IV", "FBTLI13"),
+        course("FBTSP04", "Pensamiento Computacional"),
+        course("FBTEM01", "Competencias para Emprender"),
+      ],
+      [
+        course("BPTEI04", "Teoría de Relaciones Internacionales II", "BPTEI03"),
+        course("BPTE05", "Geografía de los Recursos"),
+        course("FBTLI15", "Inglés V", "FBTLI14"),
+        course("BPTEP01", "Introducción a la Política"),
+        course("FBTHE05", "Investigación y Sustentabilidad"),
+      ],
+      [
+        course("FPTEI14", "Teoría de Relaciones Internacionales III", "BPTEI04"),
+        course("FBTEJ03", "Introducción al Derecho"),
+        course("BPTAK30", "Principios de Economía"),
+        course("BPTEP02", "Teoría Política Clásica", "BPTEP01"),
+        course("FBTEM02", "Ideas Emprendedoras"),
+      ],
+      [
+        course("FPTEI15", "Organizaciones Internacionales", "BPTEI03"),
+        course("BPTHE11", "Civilización Clásica"),
+        course("BPTAK31", "Microeconomía", "BPTAK30"),
+        course("BPTEJ11", "Derecho Constitucional", "BPTEP01"),
+        course("FGE", "Electiva FG1"),
+      ],
+      [
+        course("BPTEJ00", "Derecho Internacional Público", "BPTEJ11"),
+        course("BPTHE12", "Civilización Medieval", "BPTHE11"),
+        course("BPTMM20", "Estadística de Ciencias Sociales I", "FBTMM02"),
+        course("BPTEH13", "Teoría Política Moderna", "BPTEP02"),
+        course("FBTHE11", "Venezuela: Identidad y Contexto"),
+      ],
+      [
+        course("FPTEI16", "Historia de las Relaciones Internacionales I", "BPTEI03"),
+        course("BPTHE13", "Civilización Moderna", "BPTHE12"),
+        course("BPTAK32", "Macroeconomía", "BPTAK31"),
+        course("FPTEP01", "Instituciones Políticas Comparadas", "BPTEJ11"),
+        course("FBTEP02", "Mundo Global: Tendencias y Transformaciones"),
+      ],
+      [
+        course("FPTGF10", "Negociación", "90 créditos"),
+        course("BPTHE14", "Civilización Contemporánea", "BPTHE13"),
+        course("BPTMM21", "Estadística de Ciencias Sociales II", "BPTMM20"),
+        course("FPTEP03", "Sistema Político Venezolano", "90 créditos"),
+        course("BPTEP08", "Metodología Cualitativa", "75 créditos"),
+      ],
+      [
+        course("FPTEI17", "Historia de las Relaciones Internacionales II", "FPTEI16"),
+        course("BPTHE19", "Historia de Iberia y Venezuela I", "BPTHE14"),
+        course("BPTEI01", "Derechos Humanos", "BPTEI03"),
+        course("FPTEP02", "Pensamiento Político-Económico de Venezuela", "BPTEP04"),
+        course("FGE", "Electiva FG2"),
+      ],
+      [
+        course("FPTEI21", "Globalización y Derecho", "BPTEJ00"),
+        course("BPTHE20", "Historia de Iberia y Venezuela II", "BPTHE19"),
+        course("FPTAK30", "Relaciones Económicas Internacionales", "BPTAK32"),
+        course("FPTEI20", "Política Exterior I", "FPTEP03"),
+        course("FPTDI02", "Innovación Social", "90 créditos"),
+      ],
+      [
+        course("FPTEI19", "Política Comercial e Integración", "105 créditos"),
+        course("FPTEP23", "Relaciones Internacionales de Latinoamérica y el Caribe"),
+        course("FPSEIXX", "Seminario Regiones y Países I", "45 créditos"),
+        course("FPTEI24", "Política Exterior II", "FPTEI20"),
+        course("FGE", "Electiva FG1 3"),
+      ],
+      [
+        course("BPTEI25", "Derecho Diplomático y Consular", "135 créditos"),
+        course("FPTEP07", "Taller de Trabajo Final de Grado", "135 créditos"),
+        course("FPSEIXX", "Seminario Regiones y Países II", "45 créditos"),
+        course("FPTEI10", "Análisis del Entorno", "135 créditos"),
+        course("FGE", "Electiva FG1 4"),
+      ],
+      [
+        course("FPTEI00", "Tópicos de Derecho Internacional Público", "BPTEJ00"),
+        course("FPTEP05", "Geopolítica y Geoestrategia"),
+        course("FPTEI28", "Retos y Amenazas Globales", "105 créditos"),
+        course("FPSPIXX", "Seminario Profesional", "105 créditos"),
+        course("FGE", "Electiva FG5"),
+      ],
+    ],
+  },
+  {
+    id: "economia-empresarial",
+    name: "Economía Empresarial",
+    approval: "Flujograma de componentes educativos de Economía Empresarial",
+    updatedAt: "Imagen de referencia",
+    periodLabels: ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"],
+    periods: [
+      [
+        course("BPTAK30", "Principios de Economía"),
+        course("FBTMM01", "Matemática Básica"),
+        course("BPTBC27", "Contabilidad I", "", { a: 2, ps: 2 }),
+        course("FBTGF01", "Introducción a las Ciencias Administrativas", "", { a: 2, ps: 2 }),
+        course("FBTLI14", "Inglés IV"),
+      ],
+      [
+        course("FBTAK01", "Elaboración de Reportes Empresariales"),
+        course("FBTMA01", "Cálculo Aplicado I", "FBTMM01", { a: 2, ps: 2 }),
+        course("BPTBC28", "Contabilidad II", "BPTBC27", { a: 2, ps: 2 }),
+        course("FBTEM01", "Competencias para Emprender"),
+        course("FBTLI15", "Inglés V", "FBTLI14"),
+      ],
+      [
+        course("BPTAK01", "Microeconomía I", "FBTMA01", { a: 2, ps: 2 }),
+        course("FBTMA02", "Cálculo Aplicado II", "FBTMA01", { a: 2, ps: 2 }),
+        course("FBTHE05", "Investigación y Sustentabilidad"),
+        course("FBTEM02", "Ideas Emprendedoras"),
+        course("FBTHE11", "Venezuela: Identidad y Contexto", "", { a: 2, ps: 2 }),
+      ],
+      [
+        course("FPTAK01", "Microeconomía II", "BPTAK01+FBTMA02", { a: 2, ps: 2 }),
+        course("FBTMA03", "Cálculo Aplicado III", "FBTMA02", { a: 2, ps: 2 }),
+        course("FBTEP02", "Mundo Global: Tendencias y Transformaciones"),
+        course("BPTMA21", "Estadística I (Economía Empresarial)", "FBTMA02", { a: 2, ps: 2 }),
+        course("BPTAK11", "Macroeconomía I", "BPTAK01", { a: 2, ps: 2 }),
+      ],
+      [
+        course("FPTAK02", "Microeconomía III", "FPTAK01", { a: 2, ps: 2 }),
+        course("FPTAK19", "Historia del Pensamiento Económico", "BPTAK11", { a: 2, ps: 2 }),
+        course("BPTGF01", "Matemática Financiera", "BPTAK01", { a: 2, ps: 2 }),
+        course("BPTMA22", "Estadística II (Economía Empresarial)", "BPTMA21", { a: 2, ps: 2 }),
+        course("FPTAK11", "Macroeconomía II", "BPTAK11", { a: 2, ps: 2 }),
+      ],
+      [
+        course("BPTBC24", "Análisis de los Estados Financieros", "BPTBC28", { a: 2, ps: 2 }),
+        course("BPTMA31", "Investigación de Operaciones", "FBTMA03", { a: 2, ps: 2 }),
+        course("BPTGF02", "Finanzas I", "BPTGF01", { a: 2, ps: 2 }),
+        course("FGE", "Electiva VI", "", { a: 2, ps: 2 }),
+        course("FPTAK12", "Macroeconomía III", "FPTAK11", { a: 2, ps: 2 }),
+      ],
+      [
+        course("BPTMK01", "Mercadeo", "90 créditos", { a: 2, ps: 2 }),
+        course("FPTAK03", "Teoría de Juegos", "BPTAK01", { a: 2, ps: 2 }),
+        course("BPTGF03", "Finanzas II", "BPTGF02", { a: 2, ps: 2 }),
+        course("FPTAK20", "Econometría I", "", { a: 2, ps: 2 }),
+        course("FPTAK13", "Política Monetaria", "FPTAK12", { a: 2, ps: 2 }),
+      ],
+      [
+        course("FPTMK01", "Investigación de Mercados", "BPTMK01", { a: 2, ps: 2 }),
+        course("FGE", "Electiva VIII"),
+        course("BPTAK13", "Evaluación de Proyectos", "BPTFN03", { a: 2, ps: 2 }),
+        course("FPTAK21", "Econometría II", "FPTAK20", { a: 2, ps: 2 }),
+        course("FPTAK14", "Política Fiscal", "FPTAK12", { a: 2, ps: 2 }),
+      ],
+      [
+        course("FPSXXXX", "Seminario Profesional I", "105 créditos", { a: 2, ps: 2 }),
+        course("FPSXXXX", "Seminario Profesional II", "105 créditos", { a: 2, ps: 2 }),
+        course("FPSXXXX", "Seminario Profesional III", "105 créditos", { a: 2, ps: 2 }),
+        course("FPTGF05", "Ética Empresarial", "90 créditos", { a: 2, ps: 2 }),
+        course("FPTAK27", "Economía Conductual", "90 créditos"),
+      ],
+      [
+        course("FPTAK04", "Economía de la Organización", "FPTAK02", { a: 2, ps: 2 }),
+        course("FPTEJ20", "Derecho para los Negocios", "", { a: 4, ps: 2 }),
+        course("BPTGP83", "Taller de Trabajo de Grado", "135 créditos", { a: 2, ps: 2 }),
+        course("FPTAK24", "Estado y Economía", "", { a: 2, ps: 2 }),
+        course("FGE", "Electiva X"),
+      ],
+      [
+        course("FPTAK05", "Economía Internacional I", "FPTAK02", { a: 2, ps: 2 }),
+        course("FGE", "Electiva XI"),
+        course("FPTAK28", "Herramientas Tecnológicas I", "105 créditos", { a: 2, ps: 2 }),
+        course("BPTBC07", "Bootcamp de Minería de Datos", "BPTMA21", { a: 2, ps: 2 }),
+        course("FPTAK17", "Desarrollo Económico I", "FPTAK12", { a: 2, ps: 2 }),
+      ],
+      [
+        course("FPTAK06", "Economía Internacional II", "FPTAK05", { a: 2, ps: 2 }),
+        course("FPTAK08", "Economía Energética", "FPTAK02", { a: 2, ps: 2 }),
+        course("FPTAK29", "Herramientas Tecnológicas II", "FPTAK28", { a: 2, ps: 2 }),
+        course("FPTBC05", "Bootcamp de Analítica de Datos", "FPTBC07", { a: 2, ps: 2 }),
+        course("FPTAK18", "Desarrollo Económico II", "FPTAK17", { a: 2, ps: 2 }),
+      ],
+    ],
+  },
+  {
+    id: "contaduria-publica",
+    name: "Contaduría Pública",
+    approval: "Flujograma de componentes educativos de Contaduría Pública",
+    updatedAt: "Imagen de referencia",
+    periodLabels: ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"],
+    periods: [
+      [
+        course("BPTBC27", "Contabilidad I"),
+        course("FBTLI14", "Inglés IV"),
+        course("BPTAK30", "Principios de Economía"),
+        course("FBTMM01", "Matemática Básica"),
+        course("FBTGF01", "Introducción a las Ciencias Administrativas"),
+      ],
+      [
+        course("BPTBC28", "Contabilidad II", "BPTBC27"),
+        course("FBTLI15", "Inglés V", "FBTLI14"),
+        course("FBTAK01", "Elaboración de Reportes Empresariales"),
+        course("FBTMA01", "Cálculo Aplicado I", "FBTMM01"),
+        course("FBTEM01", "Competencias para Emprender"),
+      ],
+      [
+        course("BPTBC29", "Contabilidad III", "BPTBC28"),
+        course("FBTHE05", "Investigación y Sustentabilidad"),
+        course("BPTAK01", "Microeconomía I", "FBTMA01"),
+        course("FBTMA02", "Cálculo Aplicado II", "FBTMA01"),
+        course("FBTEM02", "Ideas Emprendedoras"),
+      ],
+      [
+        course("BPTBC30", "Contabilidad de Costos I", "BPTBC29"),
+        course("BPTMA31", "Investigación de Operaciones", "FBTMA02"),
+        course("BPTAK11", "Macroeconomía I", "BPTAK01"),
+        course("BPTMA21", "Estadística I (Contaduría Pública)", "FBTMA02"),
+        course("FBTHE11", "Venezuela: Identidad y Contexto"),
+      ],
+      [
+        course("FPTBC69", "Contabilidad de Costos II", "BPTBC30"),
+        course("FPTBC65", "Auditoría Externa", "BPTBC29"),
+        course("BPTAK12", "Economía Gerencial", "BPTAK11"),
+        course("BPTMA22", "Estadística II (Contaduría Pública)", "BPTMA21"),
+        course("BPTGF01", "Matemática Financiera", "BPTAK01"),
+      ],
+      [
+        course("FPTBC68", "Contabilidad Superior", "BPTBC30"),
+        course("FPTBC66", "Auditoría Interna", "FPTBC64"),
+        course("BPTBC24", "Análisis de Estados Financieros", "BPTBC28"),
+        course("BPTGF02", "Finanzas I", "BPTGF01"),
+        course("FBTEP02", "Mundo Global: Tendencias y Transformaciones"),
+      ],
+      [
+        course("FPTBC75", "Contabilidad Avanzada", "FPTBC68"),
+        course("FPTBC70", "Auditoría Forense", "FPTBC66"),
+        course("BPTBC26", "Presupuesto Empresarial", "BPTBC24"),
+        course("BPTGF03", "Finanzas II", "BPTGF02"),
+        course("BPTMK01", "Mercadeo"),
+      ],
+      [
+        course("FPTBC28", "Contabilidad Especializada", "BPTBC28"),
+        course("FPTGF06", "Gobierno Corporativo", "BPTGF03"),
+        course("FPTMK01", "Investigación de Mercado"),
+        course("BPTGF05", "Finanzas Internacionales", "BPTGF03"),
+        course("BPTAK13", "Evaluación de Proyectos", "BPTGF03"),
+      ],
+      [
+        course("FPTEJ20", "Derecho para los Negocios"),
+        course("FPTGF05", "Ética Empresarial"),
+        course("FPTAK27", "Economía Conductual"),
+        course("FPTBC63", "Mercado de Valores", "FPTBC28"),
+        course("FGE", "Electiva I"),
+      ],
+      [
+        course("FPTBC71", "Tributos I", "FPTBC70"),
+        course("FPTBC62", "Simulación de Negocios Nacionales", "FPTBC28"),
+        course("BPTGF83", "Taller de Trabajo de Grado (Contaduría Pública)", "105 créditos"),
+        course("FPSXXX", "Seminario Profesional I"),
+        course("FGE", "Electiva II"),
+      ],
+      [
+        course("FPTBC72", "Tributos II", "FPTBC71"),
+        course("FPTAK28", "Herramientas Tecnológicas I"),
+        course("FPTBC07", "Bootcamp de Minería de Datos"),
+        course("FPSXXX", "Seminario Profesional II", "90 créditos"),
+        course("FGE", "Electiva III"),
+      ],
+      [
+        course("FPTBC73", "Tributos III", "FPTBC72"),
+        course("FPTAK29", "Herramientas Tecnológicas II", "FPTAK28"),
+        course("FPTBC05", "Bootcamp de Analítica de Datos", "FPTBC07"),
+        course("FPSXXX", "Seminario Profesional III", "90 créditos"),
+        course("FGE", "Electiva IV"),
+      ],
+    ],
+  },
+  {
+    id: "psicologia",
+    name: "Psicología",
+    approval: "Flujograma de componentes educativos de Psicología",
+    updatedAt: "Imagen de referencia",
+    periods: [
+      [
+        psychologyCourse("FBTCC03", "Introducción a la Psicología", [3, 1, 0, 4, 3]),
+        psychologyCourse("FBTMM07", "Lógica y Matemáticas", [4, 0, 1, 4, 3], "FBTMM04"),
+        psychologyCourse("FBTPS04", "Pensamiento Computacional"),
+        psychologyCourse("FBTLI13", "Inglés IV"),
+        psychologyCourse("FBTEM01", "Competencias para Emprender"),
+      ],
+      [
+        psychologyCourse("BPTCC05", "Psicología del Desarrollo del Niño", [2, 2, 0, 4, 3]),
+        psychologyCourse("FBTEP02", "Mundo Global: Tendencias y Transformaciones", [2, 1, 1, 4, 3]),
+        psychologyCourse("FBTHE11", "Venezuela: Identidad y Contexto"),
+        psychologyCourse("FBTLI14", "Inglés V", undefined, "FBTLI13"),
+        psychologyCourse("FBTEC05", "Investigación y Sustentabilidad"),
+      ],
+      [
+        psychologyCourse("BPTCC08", "Psicología del Desarrollo del Niño y Adolescente", [2, 2, 0, 4, 3], "BPTCC05 (S)"),
+        psychologyCourse("BPTCC01", "Neurociencias I", [2, 1, 1, 4, 3]),
+        psychologyCourse("BPTCC03", "Psicología del Aprendizaje", [2, 2, 0, 4, 3], "FBTCC03 (S)"),
+        psychologyCourse("BPTMM30", "Estadística I", undefined, "FBTMM07 (S)"),
+        psychologyCourse("FBTEM02", "Ideas Emprendedoras", [2, 2, 0, 4, 3]),
+      ],
+      [
+        psychologyCourse("BPTCC12", "Psicología del Desarrollo del Adulto", [2, 2, 0, 4, 3], "BPTCC08 (S)"),
+        psychologyCourse("BPTCC04", "Neurociencias II", [2, 1, 1, 4, 3], "BPTCC01 (S)"),
+        psychologyCourse("BPTCC06", "Psicología Cognitiva", [2, 2, 0, 4, 3], "BPTCC03 (S)"),
+        psychologyCourse("BPTMM31", "Estadística II", undefined, "BPTMM30 (S)"),
+        psychologyCourse("BPTCC09", "Psicología Social I", [2, 2, 0, 4, 3]),
+      ],
+      [
+        psychologyCourse("BPTCC10", "Teorías de la Personalidad I", [4, 0, 1, 4, 3], "BPTCC12 (S)"),
+        psychologyCourse("BPTCC07", "Neurociencias III", [2, 1, 1, 4, 3], "BPTCC04 (S)"),
+        psychologyCourse("FPTCC04", "Psicología Educativa"),
+        psychologyCourse("BPTMM32", "Estadística III", [2, 2, 0, 4, 3], "BPTMM31 (S)"),
+        psychologyCourse("BPTCC14", "Psicología Social II", [2, 2, 0, 4, 3], "BPTCC09 (S)"),
+      ],
+      [
+        psychologyCourse("BPTCC15", "Teorías de la Personalidad II", [4, 0, 1, 4, 3], "BPTCC10 (S)"),
+        psychologyCourse("BPTCC11", "Evaluación Cognitiva", [1, 3, 0, 4, 3], "BPTCC06 (S)"),
+        psychologyCourse("BPTCC17", "Métodos de Investigación", [1, 3, 0, 4, 3]),
+        psychologyCourse("BPTCC13", "Psicometría I", [2, 2, 0, 4, 3], "BPTMM32 (S)"),
+        psychologyCourse("FPTCC02", "Psicología Comunitaria", [2, 2, 0, 4, 3]),
+      ],
+      [
+        psychologyCourse("FPTCC01", "Psicopatología I", [2, 2, 0, 4, 3], "BPTCC15"),
+        psychologyCourse("BPTCC24", "Evaluación Neurocognitiva", [1, 3, 0, 4, 3], "BPTCC11"),
+        psychologyCourse("BPTCC22", "Métodos Cualitativos de Investigación", [1, 3, 0, 4, 3], "BPTCC17"),
+        psychologyCourse("BPTCC18", "Psicometría II", [2, 2, 0, 4, 3], "BPTCC13 (S)"),
+        psychologyCourse("FPTCC27", "Asesoramiento y Orientación Psicológica", [2, 2, 0, 4, 3], "BPTCC15"),
+      ],
+      [
+        psychologyCourse("FPTCC03", "Psicopatología II", [2, 2, 0, 4, 3], "FPTCC01"),
+        psychologyCourse("BPTCC16", "Evaluación de la Personalidad I", [1, 3, 0, 4, 3], "FPTCC01"),
+        psychologyCourse("BPTCC21", "Métodos Cuantitativos de Investigación", [1, 3, 0, 4, 3], "BPTCC17 + BPTMM32 (S)"),
+        psychologyCourse("BPTCC23", "Evaluación Psicoeducativa", [1, 3, 0, 4, 3], "BPTCC11"),
+        psychologyCourse("FPTCC05", "Psicología del Trabajo", [3, 1, 0, 4, 3]),
+      ],
+      [
+        psychologyCourse("FPTCC07", "Clínica Dinámica", undefined, "FPTCC03"),
+        psychologyCourse("BPTCC20", "Evaluación de la Personalidad II", [1, 3, 0, 4, 3], "BPTCC16"),
+        psychologyCourse("BPTCC19", "Atención a la Diversidad", [2, 2, 0, 4, 3], "FPTCC04 (S)"),
+        psychologyCourse("FPTCC09", "Dinámica de Grupo", [2, 2, 0, 4, 3], "FPTCC04"),
+        psychologyCourse("FPTCC08", "Comportamiento Humano en las Organizaciones", undefined, "FPTCC05 (S)"),
+      ],
+      [
+        psychologyCourse("FPTCC28", "Clínica Cognitivo Conductual", [2, 2, 0, 4, 3], "FPTCC03"),
+        psychologyCourse("FPTCC13/FPTCC14", "Práctica Profesional I", [2, 2, 0, 4, 3], "135 créditos"),
+        psychologyCourse("FPTCC19", "Taller de Trabajo de Grado", undefined, "BPTCC21 + BPTCC22 + 120 créditos"),
+        psychologyCourse("FPTCC32", "Terapia Humanista y Sistémica", undefined, "FPTCC03"),
+        psychologyCourse("FPTCC11", "Procesos y Técnicas de Gestión de Recursos Humanos", undefined, "FPTCC08 (S)"),
+      ],
+      [
+        psychologyCourse("FGE", "Electiva 1", [2, 2, 0, 4, 3]),
+        psychologyCourse("FPTCC23/FPTCC24", "Práctica Profesional II", undefined, "135 créditos"),
+        psychologyCourse("FPTCC06", "Psicología de la Salud"),
+        psychologyCourse("FPTCC31", "Intervención Psicológica en Factores de Protección", undefined, "FPTCC03"),
+        psychologyCourse("FGE", "Electiva 2", [2, 2, 0, 4, 3]),
+      ],
+      [
+        psychologyCourse("FPTCC30", "Ética del Psicólogo", undefined, "120 créditos"),
+        psychologyCourse("FPTCC29", "Práctica Profesional III", undefined, "165 créditos"),
+        psychologyCourse("FPSCC01", "Seminario de Tendencias Actuales", undefined, "135 créditos"),
+        psychologyCourse("FGE", "Electiva 3", [2, 2, 0, 4, 3]),
+        psychologyCourse("FGE", "Electiva 4"),
+      ],
+    ],
+  },
 ];
+
+// Local curriculum changes invalidate browser snapshots without reading the DB.
+export const FLOW_CATALOG_VERSION = curriculumVersion(flowPrograms);
+
+function curriculumVersion(programs) {
+  let hash = 2166136261;
+  for (const character of JSON.stringify(programs)) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return (hash >>> 0).toString(16);
+}
+
+export function sharedCourseInstances(target, programs = flowPrograms) {
+  const targetCode = String(target?.code ?? "").trim().toLocaleUpperCase();
+  const targetName = normalizeCourseName(target?.name);
+  if (!targetCode || !targetName) return [];
+
+  return programs.flatMap((program) => program.periods.flatMap((period, periodIndex) =>
+    period.flatMap((course, courseIndex) => {
+      if ((targetCode === "FGE" || targetCode === "FPSXXXX" || targetCode === "FPSXXX") && program.id !== target.career) return [];
+      if (normalizeCourseName(course.name) !== targetName) return [];
+      const id = `${program.id}-${periodIndex + 1}-${courseIndex + 1}-${course.code}`;
+      return [{ ...course, id, career: program.id, period: periodIndex + 1 }];
+    }),
+  ));
+}
+
+function normalizeCourseName(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
 
 function course(code, name, prereq = "", overrides = {}) {
   return {

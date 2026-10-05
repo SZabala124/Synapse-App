@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { isAdmin } from "./users";
+import { isAdmin, isKnownAdmin } from "./users";
+import { requireAuthenticatedEmail } from "./security";
 
 const RAPID_MESSAGE_WINDOW_MS = 3 * 60 * 1000;
 const FIRST_COOLDOWN_MS = 10 * 60 * 1000;
@@ -10,7 +11,7 @@ const ESCALATED_COOLDOWN_MS = 60 * 60 * 1000;
 export const getPostingCooldown = query({
   args: { userEmail: v.string() },
   handler: async (ctx, args) => {
-    const userEmail = args.userEmail.trim().toLowerCase();
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     if (await isAdmin(ctx, userEmail)) {
       return { cooldownUntil: 0, isExempt: true };
     }
@@ -30,17 +31,20 @@ export const list = query({
     userEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const userEmail = args.userEmail
+      ? (await requireAuthenticatedEmail(ctx, args.userEmail)).email
+      : null;
     const rows = await ctx.db.query("comments").order("desc").take(240);
-    const likes = args.userEmail
+    const likes = userEmail
       ? await ctx.db
         .query("commentLikes")
-        .withIndex("by_user_comment", (q) => q.eq("userEmail", args.userEmail.trim().toLowerCase()))
+        .withIndex("by_user_comment", (q) => q.eq("userEmail", userEmail))
         .collect()
       : [];
-    const reports = args.userEmail
+    const reports = userEmail
       ? await ctx.db
         .query("commentReports")
-        .withIndex("by_reporter_comment", (q) => q.eq("reporterEmail", args.userEmail.trim().toLowerCase()))
+        .withIndex("by_reporter_comment", (q) => q.eq("reporterEmail", userEmail))
         .collect()
       : [];
     const likedCommentIds = new Set(likes.map((like) => like.commentId));
@@ -49,7 +53,7 @@ export const list = query({
     const authorEmails = Array.from(new Set(rows.map((comment) => comment.userEmail).filter(Boolean)));
     const adminAuthors = new Set();
     for (const email of authorEmails) {
-      if (await isAdmin(ctx, email)) adminAuthors.add(email);
+      if (await isKnownAdmin(ctx, email)) adminAuthors.add(email);
     }
 
     const comments = rows.map((comment) => ({
@@ -92,7 +96,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const body = args.body.trim();
-    const userEmail = args.userEmail.trim().toLowerCase();
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     if (body.length < 3) throw new Error("El comentario necesita al menos 3 caracteres.");
     if (body.length > 1200) throw new Error("El comentario no puede superar 1200 caracteres.");
 
@@ -186,7 +190,7 @@ export const toggleLike = mutation({
     userEmail: v.string(),
   },
   handler: async (ctx, args) => {
-    const userEmail = args.userEmail.trim().toLowerCase();
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const comment = await ctx.db.get(args.id);
     if (!comment) throw new Error("Comentario no disponible.");
 
@@ -225,7 +229,7 @@ export const update = mutation({
   },
   handler: async (ctx, args) => {
     const body = args.body.trim();
-    const userEmail = args.userEmail.trim().toLowerCase();
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     if (body.length < 3) throw new Error("El comentario necesita al menos 3 caracteres.");
     if (body.length > 1200) throw new Error("El comentario no puede superar 1200 caracteres.");
 
@@ -246,7 +250,7 @@ export const remove = mutation({
     userEmail: v.string(),
   },
   handler: async (ctx, args) => {
-    const userEmail = args.userEmail.trim().toLowerCase();
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const comment = await ctx.db.get(args.id);
     if (!comment) throw new Error("Comentario no disponible.");
 
@@ -265,7 +269,7 @@ export const report = mutation({
     details: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const reporterEmail = args.userEmail.trim().toLowerCase();
+    const { email: reporterEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const reason = args.reason.trim();
     const details = args.details?.trim();
     if (!reason) throw new Error("Selecciona un motivo para la denuncia.");
@@ -323,7 +327,7 @@ export const listReports = query({
       const current = grouped.get(reportRow.commentId) ?? {
         comment: {
           ...comment,
-          authorIsAdmin: await isAdmin(ctx, comment.userEmail),
+          authorIsAdmin: await isKnownAdmin(ctx, comment.userEmail),
         },
         reports: [],
       };
@@ -350,7 +354,7 @@ export const resolveReport = mutation({
     action: v.union(v.literal("dismiss"), v.literal("delete")),
   },
   handler: async (ctx, args) => {
-    const adminEmail = args.adminEmail.trim().toLowerCase();
+    const { email: adminEmail } = await requireAuthenticatedEmail(ctx, args.adminEmail);
     if (!(await isAdmin(ctx, adminEmail))) throw new Error("Solo administradores pueden resolver denuncias.");
     const status = args.action === "delete" ? "deleted" : "dismissed";
     const reports = await ctx.db

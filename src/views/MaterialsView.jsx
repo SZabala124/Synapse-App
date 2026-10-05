@@ -1110,6 +1110,7 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
   const [pdfBlob, setPdfBlob] = useState(null);
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
+  const [requiresPlanUpgrade, setRequiresPlanUpgrade] = useState(false);
   const [zoom, setZoom] = useState(() => {
     if (typeof window === "undefined") return 100;
     return window.matchMedia?.("(max-width: 680px)").matches ? 60 : 100;
@@ -1200,7 +1201,10 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
         if (!cancelled) setPdfBlob(blob);
       })
       .catch((viewerError) => {
-        if (!cancelled) setError(viewerError?.message ?? "No se pudo abrir el PDF.");
+        if (!cancelled) {
+          setError(viewerError?.message ?? "No se pudo abrir el PDF.");
+          setRequiresPlanUpgrade(viewerError?.code === "PRO_MATERIAL_LIMIT_REACHED");
+        }
       });
     return () => {
       cancelled = true;
@@ -1400,7 +1404,7 @@ export function MaterialViewerModal({ material, onClose, onRate, onClearRating, 
               </div>
             )}
             {isProtectedPdf && !pdfBlob && !error && <p>Cargando PDF protegido...</p>}
-            {error && <p className="auth-error">{error}</p>}
+            {error && <p className="auth-error" role="alert">{error}{requiresPlanUpgrade && <> <a href="#plans">Ver planes</a></>}</p>}
             {isProtectedPdf && pdfBlob && (
               <PdfCanvasViewer
                 blob={pdfBlob}

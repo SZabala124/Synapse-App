@@ -4,6 +4,7 @@ import logoUrl from "../../Synapse.svg";
 const navItems = [
   ["landing", "Inicio"],
   ["career", "Flujograma"],
+  ["quarter", "Trimestre"],
   ["materials", "Materiales"],
   ["tools", "Herramientas"],
   ["plans", "Planes", "non-admin"],
@@ -70,7 +71,7 @@ export function AppShell({ currentRoute, theme, onThemeChange, isAdmin = false, 
   useEffect(() => () => clearMenuCloseTimer(), []);
 
   return (
-    <header ref={shellRef} className={menuOpen ? "app-shell is-menu-open" : "app-shell"}>
+    <header ref={shellRef} className={`app-shell${isAdmin ? " is-admin" : ""}${menuOpen ? " is-menu-open" : ""}`}>
       <a className="brand" href="#landing" aria-label="Synapse Academia">
         <img className="brand-logo" src={logoUrl} alt="" aria-hidden="true" />
         <span>

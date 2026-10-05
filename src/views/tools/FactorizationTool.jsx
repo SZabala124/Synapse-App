@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { LatexBlock } from "./latexReader";
 import { multiplyTerms, parseAlgebraTerm, polynomialToLatex, sanitizeAlgebraInput, simplifyPolynomial, termToLatex } from "./AlgebraOperationsTool";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { factorMonicQuadratic, isPerfectSquareTrinomialCoefficients } from "../../utils/academicMath";
 import { ToolExampleButton } from "./ToolExampleButton";
 
 const FACTORIZATION_EXAMPLES = [
@@ -241,16 +242,16 @@ function factorQuadratic(terms) {
   const b = ordered.find((term) => term.power === 1)?.coefficient ?? 0;
   const c = ordered.find((term) => term.power === 0)?.coefficient ?? 0;
   if (a !== 1) throw new Error("Por ahora el trinomio de segundo grado soporta coeficiente principal 1.");
-  const pair = integerPairForSumProduct(b, c);
-  if (!pair) throw new Error("No encontré dos números enteros que multipliquen c y sumen b.");
+  const factorization = factorMonicQuadratic(b, c);
+  if (!factorization) throw new Error("El trinomio no tiene factores reales.");
   return {
     kind: "Trinomio de segundo grado",
-    answer: `(x${signedNumber(pair[0])})(x${signedNumber(pair[1])})`,
-    latexAnswer: `${polynomialToLatex(terms)}=(x${signedNumber(pair[0])})(x${signedNumber(pair[1])})`,
+    answer: factorization.answer,
+    latexAnswer: `${polynomialToLatex(terms)}=${factorization.answer}`,
     steps: [
-      { title: "Buscamos dos números", lines: [`m\\cdot n=${c},\\quad m+n=${b}`] },
-      { title: "Encontramos la pareja", lines: [`m=${pair[0]},\\quad n=${pair[1]}`] },
-      { title: "Armamos los factores", lines: [`(x${signedNumber(pair[0])})(x${signedNumber(pair[1])})`] },
+      { title: "Calculamos el discriminante", lines: [`\\Delta=b^2-4ac=${b ** 2 - 4 * c}`] },
+      { title: "Encontramos las raíces exactas", lines: [`x_1=${factorization.roots[0]},\\quad x_2=${factorization.roots[1]}`] },
+      { title: "Armamos los factores", lines: [factorization.answer] },
     ],
   };
 }
@@ -356,9 +357,12 @@ function isPerfectSquareTrinomial(terms) {
   if (terms.length !== 3) return false;
   const ordered = orderByPower(terms);
   if (ordered[0].power !== 2 || ordered[2].power !== 0) return false;
-  const firstRoot = sqrtTerm(ordered[0]);
-  const lastRoot = sqrtTerm(ordered[2]);
-  return Math.abs(Math.abs(ordered[1].coefficient) - Math.abs(2 * firstRoot.coefficient * lastRoot.coefficient)) < 1e-10;
+  if (ordered[1].power !== 1) return false;
+  return isPerfectSquareTrinomialCoefficients(
+    ordered[0].coefficient,
+    ordered[1].coefficient,
+    ordered[2].coefficient,
+  );
 }
 
 function isDifferenceSquares(terms) {
@@ -375,20 +379,6 @@ function sqrtTerm(term) {
 function isPerfectSquareNumber(value) {
   const root = Math.sqrt(value);
   return Math.abs(root - Math.round(root)) < 1e-10;
-}
-
-function integerPairForSumProduct(sum, product) {
-  const limit = Math.max(20, Math.abs(product) + Math.abs(sum) + 4);
-  for (let left = -limit; left <= limit; left += 1) {
-    for (let right = -limit; right <= limit; right += 1) {
-      if (left * right === product && left + right === sum) return [left, right];
-    }
-  }
-  return null;
-}
-
-function signedNumber(value) {
-  return value >= 0 ? `+${value}` : `${value}`;
 }
 
 function gcd(left, right) {

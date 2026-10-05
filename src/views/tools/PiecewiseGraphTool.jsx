@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { LatexBlock } from "./latexReader";
 import { ToolMetaTags } from "./ToolMetaTags";
+import { isQuadraticInjectiveOnInterval } from "../../utils/academicMath";
 import { ToolExampleButton } from "./ToolExampleButton";
 
 const PRESETS = {
@@ -510,6 +511,22 @@ function lineLatex(m, b) {
 }
 
 function analyzeInjectivity(segments) {
+  for (const segment of segments) {
+    const interval = xInterval(segment);
+    const isConstantLine = segment.kind !== "quadratic"
+      && Math.abs(evaluateSegment(segment, interval.max) - evaluateSegment(segment, interval.min)) < 1e-10
+      && interval.max - interval.min > 1e-10;
+    const foldsInsideInterval = segment.kind === "quadratic"
+      && !isQuadraticInjectiveOnInterval(segment.a, segment.b, interval.min, interval.max);
+    if (isConstantLine || foldsInsideInterval) {
+      const repeatedY = evaluateSegment(segment, (interval.min + interval.max) / 2);
+      return {
+        injective: false,
+        repeatedY,
+        lines: [`\\text{El mismo tramo toma el valor }y=${formatNumber(repeatedY)}\\text{ para más de un valor de }x.`, "\\text{Por lo tanto, la función no es inyectiva.}"],
+      };
+    }
+  }
   const ranges = segments.map((segment) => yInterval(segment));
   for (let i = 0; i < ranges.length; i += 1) {
     for (let j = i + 1; j < ranges.length; j += 1) {

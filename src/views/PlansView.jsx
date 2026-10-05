@@ -24,6 +24,8 @@ const plans = [
       "Materiales gratis ilimitados",
       "3 materiales Pro al mes",
       "Hasta 7 materias seleccionadas por trimestre",
+      "Horario semanal gratis para todas tus materias",
+      "Seguimiento de evaluaciones para 3 materias por trimestre",
       "Sin acceso a herramientas",
     ],
   },
@@ -38,6 +40,8 @@ const plans = [
     features: [
       "Materiales gratis y Pro sin límites",
       "Todas las materias de tu carrera",
+      "Seguimiento de evaluaciones y simulaciones para todo el trimestre",
+      "Horario semanal de clases de lunes a viernes",
       "Lista completa de herramientas de tu carrera",
       "3 herramientas al mes",
     ],
@@ -53,6 +57,7 @@ const plans = [
     description: "Todo Synapse desbloqueado para estudiar a fondo.",
     features: [
       "Todo lo incluido en Pro",
+      "Seguimiento y simulaciones de todas tus materias del trimestre",
       "Herramientas ilimitadas de tu carrera",
       "Sin límites mensuales de uso académico",
       "Ideal para parciales, guías y práctica intensiva",

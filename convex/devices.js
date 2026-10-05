@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuthenticatedEmail } from "./security";
 
 const MAX_LINKED_DEVICES = 2;
 
@@ -9,9 +10,7 @@ export const list = query({
     currentDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const email = normalizeEmail(args.email);
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity || normalizeEmail(identity.email) !== email) return [];
+    const { email } = await requireAuthenticatedEmail(ctx, args.email);
 
     const devices = await ctx.db
       .query("accountDevices")
@@ -36,11 +35,7 @@ export const register = mutation({
     label: v.string(),
   },
   handler: async (ctx, args) => {
-    const email = normalizeEmail(args.email);
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity || normalizeEmail(identity.email) !== email) {
-      throw new Error("No se pudo validar la sesión.");
-    }
+    const { email } = await requireAuthenticatedEmail(ctx, args.email);
 
     const now = Date.now();
     const existing = await ctx.db
@@ -77,11 +72,7 @@ export const remove = mutation({
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
-    const email = normalizeEmail(args.email);
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity || normalizeEmail(identity.email) !== email) {
-      throw new Error("No se pudo validar la sesión.");
-    }
+    const { email } = await requireAuthenticatedEmail(ctx, args.email);
 
     const device = await ctx.db
       .query("accountDevices")
@@ -91,7 +82,3 @@ export const remove = mutation({
     return { removed: Boolean(device) };
   },
 });
-
-function normalizeEmail(email) {
-  return String(email ?? "").trim().toLowerCase();
-}

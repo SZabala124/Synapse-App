@@ -1,19 +1,24 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
-import { assertAdmin } from "./users";
-import { PLAN_PRICES, quarterlyUpgrade, subscriptionEnd, purchaseOptions } from "./paymentPricing";
+import { assertAdmin, schedulePlanExpiration } from "./users";
+import { requireAuthenticatedEmail } from "./security";
+import { PLAN_PRICES, quarterlyUpgrade, subscriptionEnd, purchaseOptions, resolvedPlanExpiration } from "./paymentPricing";
 
 async function optionsForUser(ctx, email) {
   const user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).first();
   const payment = await latestApproved(ctx, email);
-  const options = Object.fromEntries(Object.keys(PLAN_PRICES).map((plan) => [plan, purchaseOptions(payment, user?.plan, plan, Date.now())]));
+  const now = Date.now();
+  const options = Object.fromEntries(Object.keys(PLAN_PRICES).map((plan) => [plan, purchaseOptions(payment, user?.plan, plan, now, user?.planExpiresAt)]));
   return applyAvailableDiscount(options, user);
 }
 
 export const billingOptions = query({
   args: { userEmail: v.string() },
   returns: v.any(),
-  handler: async (ctx, args) => await optionsForUser(ctx, normalizeEmail(args.userEmail)),
+  handler: async (ctx, args) => {
+    const { email } = await requireAuthenticatedEmail(ctx, args.userEmail);
+    return await optionsForUser(ctx, email);
+  },
 });
 
 export const paymentQuote = query({
@@ -24,13 +29,10 @@ export const paymentQuote = query({
     referralCode: v.optional(v.string()),
   },
   returns: v.any(),
-  handler: async (ctx, args) => await paymentQuoteForUser(
-    ctx,
-    normalizeEmail(args.userEmail),
-    args.plan,
-    args.billingPeriod,
-    args.referralCode,
-  ),
+  handler: async (ctx, args) => {
+    const { email } = await requireAuthenticatedEmail(ctx, args.userEmail);
+    return await paymentQuoteForUser(ctx, email, args.plan, args.billingPeriod, args.referralCode);
+  },
 });
 
 async function latestApproved(ctx, email) {
@@ -47,19 +49,23 @@ async function upgradeForUser(ctx, email) {
 export const quarterlyUpgradeOffer = query({
   args: { userEmail: v.string() },
   returns: v.any(),
-  handler: async (ctx, args) => await upgradeForUser(ctx, normalizeEmail(args.userEmail)),
+  handler: async (ctx, args) => {
+    const { email } = await requireAuthenticatedEmail(ctx, args.userEmail);
+    return await upgradeForUser(ctx, email);
+  },
 });
 
 export const planExpiration = query({
   args: { userEmail: v.string(), plan: v.string() },
   returns: v.union(v.number(), v.null()),
   handler: async (ctx, args) => {
+    const { email } = await requireAuthenticatedEmail(ctx, args.userEmail);
     if (!["pro", "excellence"].includes(args.plan)) return null;
+    const user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).first();
     const payment = await ctx.db.query("paymentRequests")
-      .withIndex("by_user_status_resolved", (q) => q.eq("userEmail", normalizeEmail(args.userEmail)).eq("status", "approved"))
+      .withIndex("by_user_status_resolved", (q) => q.eq("userEmail", email).eq("status", "approved"))
       .order("desc").first();
-    if (!payment?.resolvedAt || payment.plan !== args.plan) return null;
-    return payment.subscriptionEndAt ?? subscriptionEnd(payment.subscriptionStartAt ?? payment.resolvedAt, payment.billingPeriod);
+    return resolvedPlanExpiration(user, payment, args.plan);
   },
 });
 
@@ -125,7 +131,7 @@ export const myPending = query({
     userEmail: v.string(),
   },
   handler: async (ctx, args) => {
-    const userEmail = normalizeEmail(args.userEmail);
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const rows = await ctx.db
       .query("paymentRequests")
       .withIndex("by_user_created", (q) => q.eq("userEmail", userEmail))
@@ -183,7 +189,7 @@ export const create = mutation({
     referralCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userEmail = normalizeEmail(args.userEmail);
+    const { email: userEmail } = await requireAuthenticatedEmail(ctx, args.userEmail);
     const quote = await paymentQuoteForUser(ctx, userEmail, args.plan, args.billingPeriod, args.referralCode);
     if (quote.referralError) throw new Error(quote.referralError);
     const option = quote.option;
@@ -253,38 +259,48 @@ export const approve = mutation({
     paymentId: v.id("paymentRequests"),
   },
   handler: async (ctx, args) => {
-    await assertAdmin(ctx, args.adminEmail);
+    const adminEmail = await assertAdmin(ctx, args.adminEmail);
     const payment = await ctx.db.get(args.paymentId);
     if (!payment) throw new Error("Pago no encontrado.");
     if (payment.status !== "pending") throw new Error("Este pago ya fue resuelto.");
 
     if (payment.basePaymentId) {
       const latest = await latestApproved(ctx, payment.userEmail);
-      if (latest?._id !== payment.basePaymentId || planRank(latest.plan) > planRank(payment.plan)) {
+      const latestEnd = latest?.resolvedAt
+        ? latest.subscriptionEndAt ?? subscriptionEnd(latest.subscriptionStartAt ?? latest.resolvedAt, latest.billingPeriod)
+        : 0;
+      if (latest?._id !== payment.basePaymentId || latestEnd <= Date.now() || planRank(latest.plan) > planRank(payment.plan)) {
         throw new Error("El plan cambió después de reportar esta ampliación. Revisa el pago antes de aprobarlo.");
       }
     }
     const activatedAt = payment.subscriptionStartAt ?? Date.now();
+    const expiresAt = payment.subscriptionEndAt ?? subscriptionEnd(activatedAt, payment.billingPeriod);
 
     const users = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", payment.userEmail))
       .collect();
+    let userIds;
     if (users.length > 0) {
       for (const user of users) {
         await ctx.db.patch(user._id, {
           plan: payment.plan,
+          planExpiresAt: expiresAt,
           ...nextDiscountPatch(user, payment.appliedDiscountPercent, 0),
         });
       }
+      userIds = users.map((user) => user._id);
     } else {
-      await ctx.db.insert("users", {
+      const userId = await ctx.db.insert("users", {
         email: payment.userEmail,
         userType: "user",
         plan: payment.plan,
+        planExpiresAt: expiresAt,
         ...nextDiscountPatch(null, payment.appliedDiscountPercent, 0),
       });
+      userIds = [userId];
     }
+    await schedulePlanExpiration(ctx, userIds, expiresAt);
 
     if (payment.referrerEmail && payment.referrerEmail !== payment.userEmail) {
       await rewardReferrer(ctx, payment, Date.now());
@@ -293,8 +309,8 @@ export const approve = mutation({
     await ctx.db.patch(args.paymentId, {
       status: "approved",
       subscriptionStartAt: activatedAt,
-      subscriptionEndAt: payment.subscriptionEndAt ?? subscriptionEnd(activatedAt, payment.billingPeriod),
-      adminEmail: normalizeEmail(args.adminEmail),
+      subscriptionEndAt: expiresAt,
+      adminEmail,
       resolvedAt: Date.now(),
     });
     return { ok: true, plan: payment.plan, userEmail: payment.userEmail };
@@ -307,13 +323,13 @@ export const reject = mutation({
     paymentId: v.id("paymentRequests"),
   },
   handler: async (ctx, args) => {
-    await assertAdmin(ctx, args.adminEmail);
+    const adminEmail = await assertAdmin(ctx, args.adminEmail);
     const payment = await ctx.db.get(args.paymentId);
     if (!payment) throw new Error("Pago no encontrado.");
     if (payment.status !== "pending") throw new Error("Este pago ya fue resuelto.");
     await ctx.db.patch(args.paymentId, {
       status: "rejected",
-      adminEmail: normalizeEmail(args.adminEmail),
+      adminEmail,
       resolvedAt: Date.now(),
     });
     return { ok: true };

@@ -8,9 +8,14 @@ const CAREER_OPTIONS = [
   { id: "electrica", name: "Ingeniería Eléctrica" },
   { id: "produccion", name: "Ingeniería de Producción" },
   { id: "quimica", name: "Ingeniería Química" },
+  { id: "psicologia", name: "Psicología" },
+  { id: "idiomas", name: "Idiomas Modernos" },
+  { id: "estudios-internacionales", name: "Estudios Internacionales" },
+  { id: "economia-empresarial", name: "Economía Empresarial" },
+  { id: "contaduria-publica", name: "Contaduría Pública" },
 ];
 
-export function ProfileView({ currentUser, profile, subjectSelection, pendingPayment, devices = [], onRemoveDevice, onOpenSubjectSelection, onSave, onSignOut }) {
+export function ProfileView({ currentUser, profile, subjectSelection, pendingPayment, devices = [], onRemoveDevice, onOpenSubjectSelection, subjectSelectionActionLabel, onSave, onSignOut }) {
   const mergedProfile = useMemo(() => ({ ...currentUser, ...(profile?.pendingCreation ? {} : profile) }), [currentUser, profile]);
   const [formState, setFormState] = useState(() => profileToForm(mergedProfile));
   const [error, setError] = useState("");
@@ -195,7 +200,7 @@ export function ProfileView({ currentUser, profile, subjectSelection, pendingPay
                 </div>
               </div>
               <button className="profile-subject-edit-button" type="button" onClick={onOpenSubjectSelection}>
-                {subjectSelection?.selectedSubjectCodes?.length ? "Cambiar materias" : "Elegir materias"}
+                {subjectSelectionActionLabel ?? (subjectSelection?.selectedSubjectCodes?.length ? "Cambiar materias" : "Elegir materias")}
               </button>
             </div>
           )}

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { isAdmin } from "./users";
+import { requireAuthenticatedEmail } from "./security";
 
 const DAILY_LOGIN_LIMIT = 3;
 
@@ -13,7 +14,7 @@ export const record = mutation({
     isExempt: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const email = normalizeEmail(args.email);
+    const { email } = await requireAuthenticatedEmail(ctx, args.email);
     if (await isAdmin(ctx, email)) {
       return { count: 0, limit: DAILY_LOGIN_LIMIT, remaining: DAILY_LOGIN_LIMIT, isExempt: true };
     }
@@ -44,10 +45,6 @@ export const record = mutation({
     };
   },
 });
-
-function normalizeEmail(email) {
-  return String(email ?? "").trim().toLowerCase();
-}
 
 function caracasDay(timestamp) {
   return new Intl.DateTimeFormat("en-CA", {

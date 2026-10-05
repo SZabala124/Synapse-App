@@ -1,76 +1,65 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "convex/react";
-import { getConvexCacheMeta, readConvexCache, writeConvexCache } from "../utils/convexCache";
+import { getConvexCacheSnapshot, subscribeConvexCache, writeConvexCache } from "../utils/convexCache";
+import { canReuseQueryCache } from "../utils/queryCachePolicy";
 
 export function useCachedConvexQuery(queryRef, args, cacheName, options = {}) {
   const enabled = options.enabled !== false;
-  const rawArgs = args ?? {};
-  const argsKey = useMemo(() => JSON.stringify(rawArgs), [rawArgs]);
-  const normalizedArgs = useMemo(() => rawArgs, [argsKey]);
+  const argsKey = JSON.stringify(args ?? {});
+  const normalizedArgs = useMemo(() => JSON.parse(argsKey), [argsKey]);
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const initialCacheMeta = getConvexCacheMeta(cacheName, normalizedArgs);
-  const [cachedValue, setCachedValue] = useState(() =>
-    readConvexCache(cacheName, normalizedArgs, {
-      allowStale: true,
-      fallback: options.initialValue,
-      ttlMs: options.ttlMs,
-    }),
-  );
-  const [shouldUseLocalCache, setShouldUseLocalCache] = useState(() => isFreshEnough(initialCacheMeta, options.preferCacheMs));
-  const liveCacheMeta = getConvexCacheMeta(cacheName, normalizedArgs);
-  const hasCachedEntry = Boolean(liveCacheMeta);
-  const cacheVersionMatches = isCacheVersionCurrent(liveCacheMeta, options.cacheVersion);
-  const skipRemoteQuery = cacheVersionMatches && (shouldUseLocalCache || isFreshEnough(liveCacheMeta, options.preferCacheMs));
+  const lastLoggedRemoteKey = useRef(null);
+  const lastLoggedCacheKey = useRef(null);
+  const subscribe = useCallback((listener) => subscribeConvexCache(cacheName, normalizedArgs, listener), [cacheName, normalizedArgs]);
+  const snapshot = useCallback(() => getConvexCacheSnapshot(cacheName, normalizedArgs), [cacheName, normalizedArgs]);
+  const entry = useSyncExternalStore(subscribe, snapshot, () => null);
+  const [, refreshClock] = useState(0);
+  const waitingForVersion = options.waitForCacheVersion && options.cacheVersion === undefined;
+  const skipRemoteQuery = !enabled || waitingForVersion || canReuseQueryCache(entry, options);
+  const remoteValue = useQuery(queryRef, skipRemoteQuery ? "skip" : normalizedArgs);
+  const isFromCache = enabled && Boolean(entry) && remoteValue === undefined;
 
-  const remoteValue = useQuery(queryRef, !enabled || skipRemoteQuery ? "skip" : normalizedArgs);
-  const remoteKey = useMemo(() => {
-    if (remoteValue === undefined) return "__loading__";
-    try {
-      return JSON.stringify(remoteValue);
-    } catch {
-      return String(Date.now());
+  useEffect(() => {
+    if (!enabled || options.cacheVersion !== undefined || !entry) return undefined;
+    const remainingMs = (options.preferCacheMs ?? 0) - (Date.now() - entry.savedAt);
+    if (remainingMs <= 0 || !Number.isFinite(remainingMs)) return undefined;
+    const timer = window.setTimeout(() => refreshClock((tick) => tick + 1), Math.min(remainingMs, 2147483647));
+    return () => window.clearTimeout(timer);
+  }, [enabled, entry, options.cacheVersion, options.preferCacheMs]);
+
+  useEffect(() => {
+    if (skipRemoteQuery || remoteValue === undefined) return;
+    const remoteKey = `${cacheName}:${argsKey}:${options.cacheVersion ?? ""}:${JSON.stringify(remoteValue)}`;
+    const logLabel = optionsRef.current.logPayloadLabel;
+    if (logLabel && lastLoggedRemoteKey.current !== remoteKey) {
+      lastLoggedRemoteKey.current = remoteKey;
+      console.info(`[Synapse ${logLabel}] Respuesta Convex recibida: ${formatPayloadBytes(estimatePayloadBytes(remoteValue))} JSON UTF-8 serializado (no incluye compresión ni protocolo; no equivale a Database I/O).`);
     }
-  }, [remoteValue]);
+    writeConvexCache(cacheName, normalizedArgs, remoteValue, { version: options.cacheVersion });
+  }, [argsKey, cacheName, normalizedArgs, options.cacheVersion, remoteValue, skipRemoteQuery]);
 
   useEffect(() => {
-    const nextCachedValue = readConvexCache(cacheName, normalizedArgs, {
-      allowStale: true,
-      fallback: optionsRef.current.initialValue,
-      ttlMs: optionsRef.current.ttlMs,
-    });
-    const nextCacheMeta = getConvexCacheMeta(cacheName, normalizedArgs);
-    setShouldUseLocalCache(isFreshEnough(nextCacheMeta, optionsRef.current.preferCacheMs));
-    setCachedValue((currentValue) => (Object.is(currentValue, nextCachedValue) ? currentValue : nextCachedValue));
-  }, [cacheName, argsKey, normalizedArgs]);
-
-  useEffect(() => {
-    if (remoteValue === undefined) return;
-    writeConvexCache(cacheName, normalizedArgs, remoteValue, { version: optionsRef.current.cacheVersion });
-    setCachedValue((currentValue) => {
-      try {
-        return JSON.stringify(currentValue) === remoteKey ? currentValue : remoteValue;
-      } catch {
-        return Object.is(currentValue, remoteValue) ? currentValue : remoteValue;
-      }
-    });
-  }, [cacheName, argsKey, normalizedArgs, remoteKey, remoteValue]);
-
-  const meta = useMemo(() => getConvexCacheMeta(cacheName, normalizedArgs), [cacheName, argsKey, cachedValue, normalizedArgs]);
+    const logLabel = optionsRef.current.logPayloadLabel;
+    const cacheKey = `${cacheName}:${argsKey}:${entry?.savedAt ?? ""}`;
+    if (!logLabel || !isFromCache || lastLoggedCacheKey.current === cacheKey) return;
+    lastLoggedCacheKey.current = cacheKey;
+    console.info(`[Synapse ${logLabel}] Caché local reutilizada: 0 B descargados; ${formatPayloadBytes(estimatePayloadBytes(entry.value))} JSON UTF-8 disponible localmente.`);
+  }, [argsKey, cacheName, entry, isFromCache]);
 
   return {
-    data: enabled ? (remoteValue === undefined ? cachedValue : remoteValue) : options.initialValue,
-    isLoading: enabled && !skipRemoteQuery && remoteValue === undefined && !hasCachedEntry,
-    isFromCache: enabled && hasCachedEntry && (skipRemoteQuery || remoteValue === undefined),
-    cacheMeta: meta,
+    data: enabled ? remoteValue === undefined ? entry?.value ?? options.initialValue : remoteValue : options.initialValue,
+    isLoading: enabled && remoteValue === undefined && !entry,
+    isFromCache,
+    cacheMeta: entry ? { savedAt: entry.savedAt, ageMs: Date.now() - entry.savedAt, version: entry.version } : null,
   };
 }
 
-function isFreshEnough(meta, preferCacheMs) {
-  return Boolean(meta && preferCacheMs > 0 && Date.now() - meta.savedAt <= preferCacheMs);
+function estimatePayloadBytes(value) {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
-function isCacheVersionCurrent(meta, cacheVersion) {
-  if (cacheVersion === undefined) return true;
-  return meta?.version === cacheVersion;
+function formatPayloadBytes(bytes) {
+  const kb = bytes / 1024;
+  return `${bytes} B (${kb < 1024 ? `${kb.toFixed(2)} KB` : `${(kb / 1024).toFixed(3)} MB`})`;
 }

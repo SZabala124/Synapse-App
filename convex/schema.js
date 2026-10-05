@@ -7,6 +7,7 @@ export default defineSchema({
   academicTerms: defineTable({
     key: v.string(),
     startedAt: v.number(),
+    displayName: v.optional(v.string()),
     resetAt: v.number(),
     processing: v.boolean(),
     processed: v.number(),
@@ -17,11 +18,23 @@ export default defineSchema({
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
     supabaseAuthUserId: v.optional(v.string()),
+    recoveryCodeHash: v.optional(v.string()),
+    recoveryCodeSalt: v.optional(v.string()),
+    recoveryAnswerHash: v.optional(v.string()),
+    recoveryAnswerSalt: v.optional(v.string()),
+    recoveryQuestion: v.optional(v.string()),
+    recoveryCodeConsumedAt: v.optional(v.number()),
+    recoveryResetReservedUntil: v.optional(v.number()),
+    recoveryResetReservationId: v.optional(v.string()),
+    recoveryResetMethod: v.optional(v.union(v.literal("code"), v.literal("question"))),
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     userType: v.optional(v.union(v.literal("user"), v.literal("admin"), v.literal("blocked"))),
     plan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("excellence"))),
+    planExpiresAt: v.optional(v.number()),
+    planExpirationScheduledAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     nationalId: v.optional(v.string()),
@@ -44,11 +57,14 @@ export default defineSchema({
     proMaterialPeriodStart: v.optional(v.number()),
     proMaterialPeriodEnd: v.optional(v.number()),
     proMaterialUses: v.optional(v.array(v.string())),
+    proMaterialResetForPlanExpiresAt: v.optional(v.number()),
     toolUsePeriodStart: v.optional(v.number()),
     toolUsePeriodEnd: v.optional(v.number()),
     toolUses: v.optional(v.array(v.string())),
   })
     .index("email", ["email"])
+    .index("by_plan_expiration", ["plan", "planExpiresAt"])
+    .index("by_supabase_auth_user_id", ["supabaseAuthUserId"])
     .index("by_referral_code", ["referralCode"])
     .index("phone", ["phone"]),
   appUsers: defineTable({
@@ -68,6 +84,16 @@ export default defineSchema({
     windowStartedAt: v.number(),
     count: v.number(),
   }).index("by_email", ["email"]),
+  adminPasswordResetAttempts: defineTable({
+    adminEmail: v.string(),
+    windowStartedAt: v.number(),
+    count: v.number(),
+  }).index("by_admin", ["adminEmail"]),
+  adminPasswordResetLogs: defineTable({
+    adminEmail: v.string(),
+    targetEmail: v.string(),
+    createdAt: v.number(),
+  }).index("by_target_created", ["targetEmail", "createdAt"]),
   accountDevices: defineTable({
     userEmail: v.string(),
     deviceId: v.string(),
@@ -104,6 +130,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_owner", ["ownerId"])
+    .index("by_storage_path", ["storagePath"])
+    .index("by_image_storage_path", ["imageStoragePath"])
     .index("by_created", ["createdAt"])
     .index("by_view_count", ["viewCount", "createdAt"])
     .index("by_format_created", ["format", "createdAt"])
@@ -140,7 +168,7 @@ export default defineSchema({
   libraryChanges: defineTable({
     key: v.string(),
     revision: v.number(),
-    operation: v.union(v.literal("create"), v.literal("update"), v.literal("delete")),
+    operation: v.union(v.literal("create"), v.literal("update"), v.literal("delete"), v.literal("view")),
     documentId: v.id("documents"),
     before: v.optional(v.any()),
     after: v.optional(v.any()),
@@ -185,6 +213,84 @@ export default defineSchema({
     .index("by_course_code", ["courseCode"])
     .index("by_career", ["career"])
     .index("by_career_and_course", ["career", "courseCode"]),
+  flowDataRevisions: defineTable({
+    key: v.string(),
+    version: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+  quarterPlanners: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    selectedCourseCodes: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_user_term", ["userEmail", "termStartedAt"]),
+  quarterDataRevisions: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    versions: v.record(v.string(), v.number()),
+  }).index("by_user_term", ["userEmail", "termStartedAt"]),
+  quarterSubjects: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    courseCode: v.string(),
+    passTarget: v.number(),
+    evaluationStats: v.optional(v.object({ count: v.number(), gradedCount: v.number(), accumulatedPoints: v.number() })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_term", ["userEmail", "termStartedAt"])
+    .index("by_user_term_course", ["userEmail", "termStartedAt", "courseCode"]),
+  quarterEvaluations: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    courseCode: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    type: v.optional(v.union(
+      v.literal("Parcial"),
+      v.literal("Taller"),
+      v.literal("Quiz"),
+      v.literal("Presentación"),
+      v.literal("Tarea"),
+      v.literal("Informe"),
+      v.literal("Proyecto"),
+      v.literal("Lectura"),
+    )),
+    weight: v.number(),
+    date: v.optional(v.string()),
+    grade: v.optional(v.number()),
+    completed: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_term", ["userEmail", "termStartedAt"])
+    .index("by_user_term_course", ["userEmail", "termStartedAt", "courseCode"]),
+  quarterScheduleBlocks: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    courseCode: v.string(),
+    day: v.number(),
+    block: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_term", ["userEmail", "termStartedAt"])
+    .index("by_user_term_course", ["userEmail", "termStartedAt", "courseCode"]),
+  quarterScheduleSubjects: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    courseCode: v.string(),
+    color: v.string(),
+    classroom: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_user_term", ["userEmail", "termStartedAt"])
+    .index("by_user_term_course", ["userEmail", "termStartedAt", "courseCode"]),
+  quarterSimulations: defineTable({
+    userEmail: v.string(),
+    termStartedAt: v.number(),
+    courseCode: v.string(),
+    name: v.string(),
+    projectedGrades: v.array(v.object({ evaluationId: v.string(), grade: v.number() })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_term_course", ["userEmail", "termStartedAt", "courseCode"]),
   comments: defineTable({
     body: v.string(),
     userEmail: v.string(),

@@ -19,18 +19,9 @@ set
 drop policy if exists "Synapse can upload material PDFs" on storage.objects;
 drop policy if exists "Synapse can upload material files" on storage.objects;
 drop policy if exists "Synapse can create signed material URLs" on storage.objects;
+drop policy if exists "Synapse authenticated uploads" on storage.objects;
+drop policy if exists "Synapse authenticated reads" on storage.objects;
 
-create policy "Synapse can upload material files"
-on storage.objects
-for insert
-to anon
-with check (
-  bucket_id = 'materials'
-  and lower((storage.extension(name))) in ('pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif')
-);
-
-create policy "Synapse can create signed material URLs"
-on storage.objects
-for select
-to anon
-using (bucket_id = 'materials');
+-- No direct anon/authenticated policy is created. Convex validates the signed-in
+-- account, admin role, ownership and active plan before asking Supabase (with a
+-- server-only secret key) for a short-lived upload or download URL.
