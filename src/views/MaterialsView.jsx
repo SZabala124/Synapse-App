@@ -191,7 +191,7 @@ export function MaterialsView({
 
   return (
     <section className="workspace">
-      <div className="workspace-header workspace-header-top-aligned">
+      <div className="workspace-header workspace-header-top-aligned materials-workspace-header">
         <div className="materials-heading-copy">
           <p className="eyebrow">Biblioteca privada</p>
           <h1>Materiales de estudio</h1>
@@ -272,6 +272,10 @@ export function MaterialsView({
             Quitar todos los filtros
           </button>
         </div>
+        <aside className="materials-coverage-note" aria-label="Aviso sobre la biblioteca de materiales">
+          <span>Biblioteca en crecimiento</span>
+          <p>La carrera con más recursos por ahora es Ingeniería en Sistemas. Poco a poco se añadirán más materiales para las demás carreras. Se busca brindar material y orden de calidad a los estudiantes.</p>
+        </aside>
       </div>
 
       {remoteStatus && (
